@@ -4,6 +4,7 @@ import android.content.Context
 import com.google.ai.edge.gallery.common.BaoLog
 import com.google.ai.edge.gallery.customtasks.baotranslate.BaoTranslateModelManager
 import com.google.ai.edge.gallery.customtasks.baotranslate.config.PipelineConfig
+import com.google.ai.edge.gallery.customtasks.baotranslate.getVadModelPath
 import com.k2fsa.sherpa.onnx.SileroVadModelConfig
 import com.k2fsa.sherpa.onnx.TenVadModelConfig
 import com.k2fsa.sherpa.onnx.Vad
@@ -46,7 +47,7 @@ class VadProcessor(private val context: Context) {
   private val inferenceLock = Any()
 
   fun initialize(): VadInitResult {
-    val modelPath = BaoTranslateModelManager.getVadModelPath(context)
+    val modelPath = getVadModelPath(context)
     if (!File(modelPath).exists()) {
       BaoLog.w(TAG, "Silero VAD model not found: $modelPath")
       return VadInitResult.ModelUnavailable

@@ -65,10 +65,42 @@ android {
     versionCode = 33
     versionName = "1.0.15"
 
+    // Hugging Face OAuth credentials — injected from gradle.properties so they never
+    // appear as hardcoded literals in source. Override `bao.hfOauth*` in a local
+    // gradle.properties (gitignored) or CI secret before a source build that needs
+    // model downloads. Defaults are non-empty placeholders so the app compiles standalone.
+    val hfOauthClientId = (project.findProperty("bao.hfOauthClientId") as String?)
+      ?: "REPLACE_WITH_HF_OAUTH_CLIENT_ID"
+    val hfOauthRedirectUri = (project.findProperty("bao.hfOauthRedirectUri") as String?)
+      ?: "REPLACE_WITH_HF_OAUTH_REDIRECT_URI"
+    val hfOauthRedirectScheme = (project.findProperty("bao.hfOauthRedirectScheme") as String?)
+      ?: "REPLACE_WITH_HF_OAUTH_REDIRECT_SCHEME"
+    buildConfigField("String", "HF_OAUTH_CLIENT_ID", "\"$hfOauthClientId\"")
+    buildConfigField("String", "HF_OAUTH_REDIRECT_URI", "\"$hfOauthRedirectUri\"")
+    buildConfigField("String", "HF_OAUTH_REDIRECT_SCHEME", "\"$hfOauthRedirectScheme\"")
+
+    // Optional: skill allowlist JSON URL. Empty by default — remote featured-skills list is
+    // disabled until a maintainer sets `bao.skillAllowlistUrl` in local gradle.properties.
+    val skillAllowlistUrl = (project.findProperty("bao.skillAllowlistUrl") as String?) ?: ""
+    buildConfigField("String", "SKILL_ALLOWLIST_URL", "\"$skillAllowlistUrl\"")
+
+    // Curated model allowlist base URL. Default points at the upstream Google AI Edge Gallery
+    // JSON index. Override `bao.modelAllowlistBaseUrl` to retarget a fork to a different CDN.
+    val modelAllowlistBaseUrl = (project.findProperty("bao.modelAllowlistBaseUrl") as String?)
+      ?: "https://raw.githubusercontent.com/google-ai-edge/gallery/refs/heads/main/model_allowlists"
+    buildConfigField("String", "MODEL_ALLOWLIST_BASE_URL", "\"$modelAllowlistBaseUrl\"")
+
+    // GitHub repo used by the new-release notifier (owner/name). Default tracks upstream. Forks
+    // override `bao.releaseCheckRepo` to retarget release checks.
+    val releaseCheckRepo = (project.findProperty("bao.releaseCheckRepo") as String?)
+      ?: "google-ai-edge/gallery"
+    buildConfigField("String", "RELEASE_CHECK_REPO", "\"$releaseCheckRepo\"")
+
     // Needed for HuggingFace auth workflows.
-    // Use the scheme of the "Redirect URLs" in HuggingFace app.
-    manifestPlaceholders["appAuthRedirectScheme"] =
-        "REPLACE_WITH_YOUR_REDIRECT_SCHEME_IN_HUGGINGFACE_APP"
+    // The scheme must match the "Redirect URLs" registered in the HuggingFace app and the
+    // `bao.hfOauthRedirectScheme` gradle property. AppAuth intercepts redirects matching
+    // this scheme via the manifestPlaceholders below.
+    manifestPlaceholders["appAuthRedirectScheme"] = hfOauthRedirectScheme
     manifestPlaceholders["applicationName"] = "com.google.ai.edge.gallery.GalleryApplication"
     manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
     manifestPlaceholders["appRoundIcon"] = "@mipmap/ic_launcher_round"
@@ -76,11 +108,15 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
+  // Pre-release: debug-only builds. The app is not yet signed for distribution. When a release
+  // keystore becomes available, add a `signingConfigs { create("release") { ... } }` block and
+  // wire it here. Until then, `assembleRelease` will produce an unsigned APK (not installable on
+  // devices). Use `assembleDebug` for all local and CI builds.
   buildTypes {
     release {
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("debug")
+      // No signingConfig — unsigned release builds only until a keystore is provisioned.
     }
   }
   compileOptions {

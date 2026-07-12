@@ -20,6 +20,20 @@ import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.ai.edge.gallery.customtasks.baotranslate.BaoTranslateModelManager
+import com.google.ai.edge.gallery.customtasks.baotranslate.CaptionEngine
+import com.google.ai.edge.gallery.customtasks.baotranslate.captionEngineFor
+import com.google.ai.edge.gallery.customtasks.baotranslate.downloadCaptionModel
+import com.google.ai.edge.gallery.customtasks.baotranslate.getCaptionModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getKokoroModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getOpenVoiceConverterFile
+import com.google.ai.edge.gallery.customtasks.baotranslate.getOpenVoiceRefEncFile
+import com.google.ai.edge.gallery.customtasks.baotranslate.getStreamingAsrModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getSupertonicModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getTranslationModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getVadModelPath
+import com.google.ai.edge.gallery.customtasks.baotranslate.getWhisperModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.isOpenVoiceCloneAvailable
+import com.google.ai.edge.gallery.customtasks.baotranslate.isCaptionModelReady
 import com.google.ai.edge.gallery.customtasks.baotranslate.audio.WavUtils
 import com.google.ai.edge.gallery.customtasks.baotranslate.tts.OpenVoiceVoiceConverter
 import java.util.concurrent.atomic.AtomicInteger
@@ -55,8 +69,8 @@ class BaoTranslateOpenVoiceConcurrencyE2eTest {
     assertTrue(
       "OpenVoice converter init",
       converter.initialize(
-        BaoTranslateModelManager.getOpenVoiceConverterFile(context),
-        BaoTranslateModelManager.getOpenVoiceRefEncFile(context),
+        getOpenVoiceConverterFile(context),
+        getOpenVoiceRefEncFile(context),
       ),
     )
 

@@ -35,92 +35,6 @@ import kotlinx.coroutines.sync.withLock
 
 private const val TAG = "BaoTranslateVM"
 
-sealed interface PipelineStatus {
-  data object Idle : PipelineStatus
-  data object Initializing : PipelineStatus
-  data object StartingRecording : PipelineStatus
-  data object Recording : PipelineStatus
-  data object Processing : PipelineStatus
-  data object Speaking : PipelineStatus
-  data object ModelsNotReady : PipelineStatus
-  data class Error(val message: String) : PipelineStatus
-}
-
-data class BaoTranslateUiState(
-  val pipelineStatus: PipelineStatus = PipelineStatus.Idle,
-  val transcripts: List<TranslationMessage> = emptyList(),
-  val sourceLanguage: String = SupportedLanguages.AUTO.key,
-  val targetLanguage: String = SupportedLanguages.DEFAULT_TARGET_KEY,
-  val voiceProfileEnrolled: Boolean = false,
-  val voiceProfilePath: String? = null,
-  // Active voice profile id. "default" is the original single-profile id; additional profiles
-  // use user-provided names. Enables multiple voice enrollment — user can switch between profiles
-  // without re-recording.
-  val activeVoiceProfileId: String = "default",
-  // All enrolled voice profiles available for selection.
-  val voiceProfiles: List<VoiceProfile> = emptyList(),
-  val errorMessage: String? = null,
-  val modelsReady: Boolean = false,
-  val modelStatuses: Map<String, ModelStatus> = emptyMap(),
-  val amplitudes: List<Float> = emptyList(),
-  val elapsedSeconds: Float = 0f,
-  val liveTranslationPreview: String? = null,
-  // Recognized SOURCE text, surfaced the instant STT completes — before the (slower) translation —
-  // so the live caption appears ~1s+ sooner. Cleared once the translated message commits.
-  val liveSourcePreview: String? = null,
-  val currentAudioDevice: AudioDevice = AudioDevice.Speaker,
-  // Face-to-face per-speaker output routing: ISO language code -> the output device that speaker's
-  // translations play on (e.g. one person's earbuds, the other the phone speaker). Empty => both use
-  // the global [currentAudioDevice]. Drives the per-panel output chip and RecordingController routing.
-  val faceToFaceOutputs: Map<String, AudioDevice> = emptyMap(),
-  val availableAudioDevices: List<AudioDevice> = emptyList(),
-  val availableInputDevices: List<com.google.ai.edge.gallery.customtasks.baotranslate.audio.AudioInputOption> = emptyList(),
-  val preferredInputDevice: com.google.ai.edge.gallery.customtasks.baotranslate.audio.AudioDevice.BluetoothHeadset? = null,
-  val routingStatus: com.google.ai.edge.gallery.customtasks.baotranslate.audio.RoutingStatus = com.google.ai.edge.gallery.customtasks.baotranslate.audio.RoutingStatus.IDLE,
-  val sttModel: String = "whisper_base",
-  val translationModel: String = "qwen25_1b",
-  val wifiOnlyDownloads: Boolean = true,
-  val storageBreakdown: Map<String, Long> = emptyMap(),
-  val localParticipant: Participant? = null,
-  val detectedLanguage: String? = null,
-  val welcomeDismissed: Boolean = false,
-  // Single-device, 2-speaker "face-to-face" mode: [sourceLanguage] and [targetLanguage] form a
-  // bidirectional pair. STT auto-detects each turn and the engine routes to the OTHER language, so two
-  // people sharing one phone are each understood without a second device (cf. the BLE multi-device path).
-  val faceToFaceMode: Boolean = false,
-  val replayMessageId: String? = null,
-  /** When true and source is AUTO, adopt Whisper's detected language as the source without a tap. */
-  val autoAcceptDetectedLanguage: Boolean = false,
-  /**
-   * Live hands-free turn phase mirrored from [ConversationManager] so the UI can surface
-   * Listening / Translating / Speaking without polling the controller.
-   */
-  val conversationPhase: ConversationPhase = ConversationPhase.Idle,
-) {
-  val isRecording: Boolean get() = pipelineStatus == PipelineStatus.Recording
-  val isStartingRecording: Boolean get() = pipelineStatus == PipelineStatus.StartingRecording
-  val isProcessing: Boolean get() = pipelineStatus == PipelineStatus.Processing
-  val isSpeaking: Boolean get() = pipelineStatus == PipelineStatus.Speaking
-  val isInitializing: Boolean get() = pipelineStatus == PipelineStatus.Initializing
-  val totalStorageMb: Float
-    get() = storageBreakdown.values.sum().toFloat() / (1024f * 1024f)
-
-  val requiredModelsReady: Boolean
-    get() {
-      val whisper = modelStatuses["whisper_base"]
-      val translation = modelStatuses["qwen25_1b"]
-      val vad = modelStatuses["silero_vad"]
-      val tts = modelStatuses["kokoro_tts"]
-      return whisper == ModelStatus.Ready &&
-        translation == ModelStatus.Ready &&
-        vad == ModelStatus.Ready &&
-        tts == ModelStatus.Ready
-    }
-
-  val allModelsReady: Boolean
-    get() = modelStatuses.values.all { it == ModelStatus.Ready }
-}
-
 @SuppressLint("RestrictedApi")
 @HiltViewModel
 class BaoTranslateViewModel @Inject constructor(
@@ -128,7 +42,7 @@ class BaoTranslateViewModel @Inject constructor(
   private val dataStoreRepository: DataStoreRepository,
 ) : AndroidViewModel(application) {
 
-  private val _uiState = MutableStateFlow(BaoTranslateUiState())
+  internal val _uiState = MutableStateFlow(BaoTranslateUiState())
   val uiState: StateFlow<BaoTranslateUiState> = _uiState.asStateFlow()
 
   val bleManager = BleConversationManager(application)
@@ -142,7 +56,7 @@ class BaoTranslateViewModel @Inject constructor(
     encryptedStore = voiceProfileEncryptedStore,
   )
 
-  private val pipelines = PipelineLifecycleManager(
+  internal val pipelines = PipelineLifecycleManager(
     voiceProfileManager = voiceProfileManager,
     activeProfileId = { _uiState.value.activeVoiceProfileId },
   )
@@ -157,9 +71,9 @@ class BaoTranslateViewModel @Inject constructor(
     get() = pipelines.openVoiceConverter != null
 
   private val localParticipantId = UUID.randomUUID().toString()
-  private val modelManager = BaoTranslateModelManager
+  internal val modelManager = BaoTranslateModelManager
 
-  private val participantStateManager = ParticipantStateManager(
+  internal val participantStateManager = ParticipantStateManager(
     pipelines = pipelines,
     audioRouter = audioRouter,
     voiceProfileManager = voiceProfileManager,
@@ -183,7 +97,7 @@ class BaoTranslateViewModel @Inject constructor(
     reinitializePipeline = ::reinitializePipeline,
   )
 
-  private val recordingController = RecordingController(
+  internal val recordingController = RecordingController(
     pipelines = pipelines,
     audioRouter = audioRouter,
     bleManager = bleManager,
@@ -199,14 +113,14 @@ class BaoTranslateViewModel @Inject constructor(
     },
   )
 
-  private val downloadCoordinator = ModelDownloadCoordinator(
+  internal val downloadCoordinator = ModelDownloadCoordinator(
     pipelines = pipelines,
     modelManager = modelManager,
     uiState = _uiState,
     viewModelScope = viewModelScope,
     getApp = { getApplication() },
     refreshLocalRuntimeState = participantStateManager::refreshLocalRuntimeState,
-    resolveTranslationModel = ::resolveAndPersistTranslationModel,
+    resolveTranslationModel = { resolveAndPersistTranslationModel(it) },
     reinitializePipeline = ::reinitializePipeline,
   )
 
@@ -252,265 +166,18 @@ class BaoTranslateViewModel @Inject constructor(
     )
     refreshVoiceProfiles()
 
-    viewModelScope.launch {
-      modelManager.modelStatuses.collect { statuses ->
-        val requiredReady =
-          statuses["whisper_base"] == ModelStatus.Ready &&
-            statuses["qwen25_1b"] == ModelStatus.Ready &&
-            statuses["silero_vad"] == ModelStatus.Ready &&
-            statuses["kokoro_tts"] == ModelStatus.Ready
-        _uiState.update { state ->
-          state.copy(
-            modelStatuses = statuses,
-            modelsReady = requiredReady && pipelines.requiredPipelinesReady(),
-          )
-        }
-      }
-    }
-
-    viewModelScope.launch {
-      audioRouter.currentDevice.collect { device ->
-        _uiState.update { state ->
-          val updated = state.copy(currentAudioDevice = device)
-          val participant = participantStateManager.updateLocalParticipant(updated)
-          updated.copy(localParticipant = participant)
-        }
-        // Broadcast once on the committed participant, outside the update{} CAS lambda.
-        _uiState.value.localParticipant?.let { bleManager.setLocalParticipant(it) }
-      }
-    }
-
-    viewModelScope.launch {
-      audioRouter.availableOutputDevices.collect { devices ->
-        _uiState.update { it.copy(availableAudioDevices = devices) }
-      }
-    }
-
-    viewModelScope.launch {
-      audioRouter.availableInputDevices.collect { inputs ->
-        _uiState.update { it.copy(availableInputDevices = inputs) }
-      }
-    }
-
-    viewModelScope.launch {
-      audioRouter.preferredInputDevice.collect { device ->
-        _uiState.update { it.copy(preferredInputDevice = device) }
-      }
-    }
-
-    viewModelScope.launch {
-      audioRouter.routingStatus.collect { status ->
-        _uiState.update { it.copy(routingStatus = status) }
-      }
-    }
-
-    viewModelScope.launch(Dispatchers.IO) {
-      bleManager.messages.collect { bleMsg ->
-        val (translation, targetLang) = pipelines.pipelineMutex.withLock {
-          pipelines.translationPipeline to _uiState.value.targetLanguage
-        }
-        // Translation and TTS operate on ISO codes (mirroring the local recording path); the KEYs
-        // ("German", "Korean", ...) are kept only for the display fields. Passing a KEY to
-        // synthesizeSpeech silently broke platform TTS for non-Kokoro target languages because
-        // PlatformTtsPipeline feeds it to Locale.forLanguageTag, which needs "de"/"ko", not
-        // "German"/"Korean". codeFor() normalizes display keys and leaves ISO codes unchanged.
-        val sourceCode = SupportedLanguages.codeFor(bleMsg.sourceLanguage)
-        val targetCode = SupportedLanguages.codeFor(targetLang)
-        var translationSucceeded = false
-        val translatedText = if (translation != null) {
-          when (val outcome = translation.translateBlocking(
-            sourceText = bleMsg.text,
-            sourceLanguage = sourceCode,
-            targetLanguage = targetCode,
-          )) {
-            is TranslationOutcome.Success -> {
-              translationSucceeded = true
-              outcome.result.translatedText
-            }
-            is TranslationOutcome.Failure -> {
-              _uiState.update { it.copy(errorMessage = getApplication<Application>().getString(R.string.bao_translate_error_translation_failed, outcome.reason)) }
-              bleMsg.text
-            }
-          }
-        } else {
-          bleMsg.text
-        }
-
-        val messageId = UUID.randomUUID().toString()
-        val message = TranslationMessage(
-          id = messageId,
-          originalText = bleMsg.text,
-          translatedText = translatedText,
-          sourceLanguage = bleMsg.sourceLanguage,
-          targetLanguage = targetLang,
-          timestamp = bleMsg.timestamp,
-          isUser = false,
-          speakerName = bleMsg.senderName,
-        )
-        _uiState.update { it.copy(transcripts = it.transcripts + message) }
-
-        // Speak the peer's translated message aloud so a live conversation can be *heard*, not just
-        // read — mirroring the local-speech path. Previously received messages were silent
-        // (synthesizeSpeech was never called and audioPlayed stayed null).
-        if (translationSucceeded) {
-          // Speak the peer's turn in THEIR own cloned voice when they've shared a timbre over BLE
-          // (multi-speaker cloning); otherwise synthesizeSpeech falls back to the local voice/TTS.
-          val audioPlayed = recordingController.synthesizeSpeech(
-            translatedText,
-            targetCode,
-            speakerSe = bleManager.voiceEmbeddingFor(bleMsg.senderId),
-            timbre = SpeechTimbre.PeerOnly,
-          )
-          _uiState.update { state ->
-            state.copy(
-              transcripts = state.transcripts.map { existing ->
-                if (existing.id == messageId) existing.copy(audioPlayed = audioPlayed) else existing
-              },
-            )
-          }
-        }
-      }
-    }
+    startCollectors()
   }
 
-  fun initializeModels() {
-    viewModelScope.launch(Dispatchers.IO) {
-      val app = getApplication<Application>()
-      _uiState.update { it.copy(pipelineStatus = PipelineStatus.Initializing) }
-
-      modelManager.refreshStatuses(app)
-      _uiState.update { it.copy(storageBreakdown = modelManager.getStorageBreakdown(app)) }
-      participantStateManager.refreshLocalRuntimeState(app)
-
-      if (!modelManager.areRequiredModelsReady(app)) {
-        _uiState.update { it.copy(
-          pipelineStatus = PipelineStatus.ModelsNotReady,
-        ) }
-        return@launch
-      }
-
-      pipelines.initializePipelines(app, resolveAndPersistTranslationModel(app), sttLanguageCode())
-      if (!pipelines.requiredPipelinesReady()) {
-        val missing = pipelines.missingPipelineComponents(app)
-        pipelines.cleanupPipelines()
-        _uiState.update { it.copy(
-          modelsReady = false,
-          pipelineStatus = PipelineStatus.ModelsNotReady,
-          errorMessage = app.getString(
-            R.string.bao_translate_error_runtime_not_ready,
-            missing.joinToString(),
-          ),
-        ) }
-        return@launch
-      }
-
-      participantStateManager.refreshLocalRuntimeState(app)
-      // Re-broadcast metadata so connected peers pick up the (just-loaded) enrolled timbre.
-      bleManager.rebroadcastMetadata()
-
-      _uiState.update {
-        it.copy(
-          modelsReady = true,
-          pipelineStatus = PipelineStatus.Idle,
-        )
-      }
-    }
-  }
+  fun initializeModels() = initializeModelsImpl()
 
   fun downloadModel(modelId: String) = downloadCoordinator.downloadModel(modelId)
 
   fun downloadRequiredModels() = downloadCoordinator.downloadRequiredModels()
 
-  fun deleteModel(modelId: String) {
-    viewModelScope.launch(Dispatchers.IO) {
-      val app = getApplication<Application>()
-      // Cancel and await any in-flight download of this model BEFORE deleting its files, so the
-      // delete can't race a live writer (no surviving partial, no model resurrected by a late
-      // completion write).
-      downloadCoordinator.cancelDownload(modelId)
-      when (modelId) {
-        "whisper_base" -> {
-          pipelines.pipelineMutex.withLock {
-            pipelines.whisperPipeline?.cleanup()
-            pipelines.whisperPipeline = null
-          }
-        }
-        "silero_vad" -> {
-          pipelines.pipelineMutex.withLock {
-            pipelines.vadProcessor?.cleanup()
-            pipelines.vadProcessor = null
-          }
-        }
-        "qwen25_1b", "gemma4_e2b" -> {
-          pipelines.pipelineMutex.withLock {
-            pipelines.translationPipeline?.cleanup()
-            pipelines.translationPipeline = null
-          }
-        }
-        "kokoro_tts" -> {
-          pipelines.pipelineMutex.withLock {
-            pipelines.kokoroTts?.cleanup()
-            pipelines.kokoroTts = null
-          }
-        }
-        "supertonic_tts" -> {
-          pipelines.pipelineMutex.withLock {
-            pipelines.supertonicTts?.cleanup()
-            pipelines.supertonicTts = null
-          }
-        }
-      }
-      modelManager.deleteModel(app, modelId)
-      // If the deleted model was the active translation model, fall back to one that still exists
-      // and PERSIST it, so a cold start can't restore a pointer to the deleted model and wedge the
-      // pipeline into ModelsNotReady while the required model is present.
-      resolveAndPersistTranslationModel(app)
-      val requiredReady = modelManager.areRequiredModelsReady(app)
-      _uiState.update { it.copy(
-        storageBreakdown = modelManager.getStorageBreakdown(app),
-        modelsReady = requiredReady && pipelines.requiredPipelinesReady(),
-        pipelineStatus = if (requiredReady) PipelineStatus.Idle else PipelineStatus.ModelsNotReady,
-      ) }
-    }
-  }
+  fun deleteModel(modelId: String) = deleteModelImpl(modelId)
 
-  fun deleteAllModels() {
-    viewModelScope.launch(Dispatchers.IO) {
-      val app = getApplication<Application>()
-      // Cancel and await every in-flight download before wiping the model dirs (avoids the
-      // delete-vs-download race and a download re-marking a model Ready after the wipe).
-      downloadCoordinator.cancelAllDownloads()
-      pipelines.pipelineMutex.withLock {
-        pipelines.cleanupPipelinesLocked()
-      }
-      modelManager.deleteAllModels(app)
-      // No translation model remains; reset the persisted selection to the required default.
-      resolveAndPersistTranslationModel(app)
-      _uiState.update { it.copy(
-        storageBreakdown = emptyMap(),
-        modelsReady = false,
-        pipelineStatus = PipelineStatus.ModelsNotReady,
-      ) }
-    }
-  }
-
-  // Returns a translation model whose files are actually present on disk. When the selected/persisted
-  // model is missing (deleted, or a partial install), falls back to the required qwen25_1b (or any
-  // other ready translation model) and PERSISTS the correction. Self-heals the cold-start brick where
-  // a stale persisted model id forced ModelsNotReady even though a usable model was installed.
-  private fun resolveAndPersistTranslationModel(app: Application): String {
-    val current = _uiState.value.translationModel
-    if (modelManager.checkModelStatus(app, current) == ModelStatus.Ready) return current
-    val fallback = listOf("qwen25_1b", "gemma4_e2b")
-      .firstOrNull { modelManager.checkModelStatus(app, it) == ModelStatus.Ready }
-      ?: "qwen25_1b"
-    if (fallback != current) {
-      _uiState.update { it.copy(translationModel = fallback) }
-      persistBaoTranslateSettings()
-      BaoLog.w(TAG, "Translation model '$current' unavailable; fell back to '$fallback'")
-    }
-    return fallback
-  }
+  fun deleteAllModels() = deleteAllModelsImpl()
 
   fun startRecording() = recordingController.startRecording()
 
@@ -672,7 +339,7 @@ class BaoTranslateViewModel @Inject constructor(
     persistBaoTranslateSettings()
   }
 
-  private fun persistBaoTranslateSettings() {
+  internal fun persistBaoTranslateSettings() {
     val s = _uiState.value
     viewModelScope.launch(Dispatchers.IO) {
       dataStoreRepository.setBaoTranslateSettings(
@@ -689,41 +356,7 @@ class BaoTranslateViewModel @Inject constructor(
 
   fun onSettingChanged(key: String) = voiceLanguageCoordinator.onSettingChanged(key)
 
-  // Whisper decode language for the chosen source: "" (auto-detect) only when the user picks Auto;
-  // otherwise force the selected language so recognition isn't corrupted by mis-detection.
-  private fun sttLanguageCode(): String =
-    // Face-to-face must decode EITHER paired language, so it forces Whisper auto-detect ("") just like
-    // the AUTO source — forcing one side would mis-transcribe the other speaker.
-    if (_uiState.value.faceToFaceMode || _uiState.value.sourceLanguage == SupportedLanguages.AUTO.key) ""
-    else SupportedLanguages.codeFor(_uiState.value.sourceLanguage)
-
-  private fun reinitializePipeline(component: String) {
-    viewModelScope.launch(Dispatchers.IO) {
-      val app = getApplication<Application>()
-      _uiState.update { it.copy(pipelineStatus = PipelineStatus.Initializing) }
-
-      pipelines.reinitializePipeline(app, component, _uiState.value.translationModel, sttLanguageCode())
-
-      if (pipelines.requiredPipelinesReady()) {
-        participantStateManager.refreshLocalRuntimeState(app)
-        _uiState.update { it.copy(
-          modelsReady = true,
-          pipelineStatus = PipelineStatus.Idle,
-          errorMessage = null,
-        ) }
-      } else {
-        val missing = pipelines.missingPipelineComponents(app)
-        _uiState.update { it.copy(
-          modelsReady = false,
-          pipelineStatus = PipelineStatus.ModelsNotReady,
-          errorMessage = app.getString(
-            R.string.bao_translate_error_runtime_not_ready,
-            missing.joinToString(),
-          ),
-        ) }
-      }
-    }
-  }
+  private fun reinitializePipeline(component: String) = reinitializePipelineImpl(component)
 
   fun refreshAudioDevice() {
     _uiState.update { it.copy(

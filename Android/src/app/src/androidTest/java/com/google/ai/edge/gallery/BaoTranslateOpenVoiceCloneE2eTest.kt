@@ -20,6 +20,20 @@ import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.ai.edge.gallery.customtasks.baotranslate.BaoTranslateModelManager
+import com.google.ai.edge.gallery.customtasks.baotranslate.CaptionEngine
+import com.google.ai.edge.gallery.customtasks.baotranslate.captionEngineFor
+import com.google.ai.edge.gallery.customtasks.baotranslate.downloadCaptionModel
+import com.google.ai.edge.gallery.customtasks.baotranslate.getCaptionModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getKokoroModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getOpenVoiceConverterFile
+import com.google.ai.edge.gallery.customtasks.baotranslate.getOpenVoiceRefEncFile
+import com.google.ai.edge.gallery.customtasks.baotranslate.getStreamingAsrModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getSupertonicModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getTranslationModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getVadModelPath
+import com.google.ai.edge.gallery.customtasks.baotranslate.getWhisperModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.isOpenVoiceCloneAvailable
+import com.google.ai.edge.gallery.customtasks.baotranslate.isCaptionModelReady
 import com.google.ai.edge.gallery.customtasks.baotranslate.ModelStatus
 import com.google.ai.edge.gallery.customtasks.baotranslate.audio.AudioResampler
 import com.google.ai.edge.gallery.customtasks.baotranslate.audio.WavUtils
@@ -57,8 +71,8 @@ class BaoTranslateOpenVoiceCloneE2eTest {
     // Exercises the real production download path (HuggingFace -> filesDir/openvoice) for the
     // OpenVoice clone models, proving downloadable + compatible + runs on-device in one test.
     ensure(ctx, listOf("whisper_base", "kokoro_tts", "openvoice"))
-    val convFile = BaoTranslateModelManager.getOpenVoiceConverterFile(ctx)
-    val refEncFile = BaoTranslateModelManager.getOpenVoiceRefEncFile(ctx)
+    val convFile = getOpenVoiceConverterFile(ctx)
+    val refEncFile = getOpenVoiceRefEncFile(ctx)
     assertTrue("OpenVoice not provisioned after download at ${convFile.parent}", convFile.length() > 0 && refEncFile.length() > 0)
 
     val converter = OpenVoiceVoiceConverter()
@@ -68,7 +82,7 @@ class BaoTranslateOpenVoiceCloneE2eTest {
       // Force Spanish: the app knows the target language it just translated into, so the roundtrip
       // check must not rely on Whisper auto-detecting language from a 4 s converted clip (it
       // mis-detected "la"/Latin, garbling an otherwise-Spanish transcription).
-      assertTrue("whisper init", whisper.initialize(BaoTranslateModelManager.getWhisperModelDir(ctx).absolutePath, language = "es"))
+      assertTrue("whisper init", whisper.initialize(getWhisperModelDir(ctx).absolutePath, language = "es"))
 
       // Enrollment: a reference voice (platform TTS) -> target speaker embedding.
       val refWav = platformTts(ctx, "Hello, my name is Alex and this is my natural speaking voice for translation.")
@@ -158,8 +172,8 @@ class BaoTranslateOpenVoiceCloneE2eTest {
   fun openVoiceClonesToReferenceVoiceOnDeviceOrt() {
     val ctx = InstrumentationRegistry.getInstrumentation().targetContext
     ensure(ctx, listOf("openvoice"))
-    val convFile = BaoTranslateModelManager.getOpenVoiceConverterFile(ctx)
-    val refEncFile = BaoTranslateModelManager.getOpenVoiceRefEncFile(ctx)
+    val convFile = getOpenVoiceConverterFile(ctx)
+    val refEncFile = getOpenVoiceRefEncFile(ctx)
     assertTrue("OpenVoice not provisioned", convFile.length() > 0 && refEncFile.length() > 0)
 
     val targetWav = ensureTargetRef(ctx)
@@ -216,8 +230,8 @@ class BaoTranslateOpenVoiceCloneE2eTest {
   fun openVoiceClonesPlatformTtsFallbackLanguage() {
     val ctx = InstrumentationRegistry.getInstrumentation().targetContext
     ensure(ctx, listOf("openvoice"))
-    val convFile = BaoTranslateModelManager.getOpenVoiceConverterFile(ctx)
-    val refEncFile = BaoTranslateModelManager.getOpenVoiceRefEncFile(ctx)
+    val convFile = getOpenVoiceConverterFile(ctx)
+    val refEncFile = getOpenVoiceRefEncFile(ctx)
     assertTrue("OpenVoice not provisioned after download", convFile.length() > 0 && refEncFile.length() > 0)
 
     val converter = OpenVoiceVoiceConverter()
@@ -285,8 +299,8 @@ class BaoTranslateOpenVoiceCloneE2eTest {
   fun computeSpeakerEmbedding_silentInput_weakOrNull() {
     val ctx = InstrumentationRegistry.getInstrumentation().targetContext
     ensure(ctx, listOf("openvoice"))
-    val convFile = BaoTranslateModelManager.getOpenVoiceConverterFile(ctx)
-    val refEncFile = BaoTranslateModelManager.getOpenVoiceRefEncFile(ctx)
+    val convFile = getOpenVoiceConverterFile(ctx)
+    val refEncFile = getOpenVoiceRefEncFile(ctx)
     val converter = OpenVoiceVoiceConverter()
     try {
       assertTrue(converter.initialize(convFile, refEncFile))
@@ -307,8 +321,8 @@ class BaoTranslateOpenVoiceCloneE2eTest {
   fun convert_nonFiniteInput_handled() {
     val ctx = InstrumentationRegistry.getInstrumentation().targetContext
     ensure(ctx, listOf("openvoice"))
-    val convFile = BaoTranslateModelManager.getOpenVoiceConverterFile(ctx)
-    val refEncFile = BaoTranslateModelManager.getOpenVoiceRefEncFile(ctx)
+    val convFile = getOpenVoiceConverterFile(ctx)
+    val refEncFile = getOpenVoiceRefEncFile(ctx)
     val converter = OpenVoiceVoiceConverter()
     try {
       assertTrue(converter.initialize(convFile, refEncFile))
@@ -375,8 +389,8 @@ class BaoTranslateOpenVoiceCloneE2eTest {
     ensure(ctx, listOf("openvoice"))
     val converter = OpenVoiceVoiceConverter()
     assertTrue(converter.initialize(
-      BaoTranslateModelManager.getOpenVoiceConverterFile(ctx),
-      BaoTranslateModelManager.getOpenVoiceRefEncFile(ctx),
+      getOpenVoiceConverterFile(ctx),
+      getOpenVoiceRefEncFile(ctx),
     ))
     converter.cleanup()
     converter.cleanup()  // must not throw
@@ -390,8 +404,8 @@ class BaoTranslateOpenVoiceCloneE2eTest {
     val converter = OpenVoiceVoiceConverter()
     try {
       assertTrue(converter.initialize(
-        BaoTranslateModelManager.getOpenVoiceConverterFile(ctx),
-        BaoTranslateModelManager.getOpenVoiceRefEncFile(ctx),
+        getOpenVoiceConverterFile(ctx),
+        getOpenVoiceRefEncFile(ctx),
       ))
       val tiny = FloatArray(2048) { i -> kotlin.math.sin(i * 0.01).toFloat() }
       val base = com.google.ai.edge.gallery.customtasks.baotranslate.tts.SynthesizedAudio(tiny, 22050)

@@ -115,6 +115,8 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
 
 private const val TAG = "AGAgentChatScreen"
+private const val SKILL_EXECUTION_TIMEOUT_MS = 60_000L
+private const val JS_HARD_STOP = "void(window.stop && window.stop());"
 private val chatViewJavascriptInterface = ChatWebViewJavascriptInterface()
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -324,29 +326,34 @@ fun AgentChatScreen(
               runCatching {
 
                 // Set up a safety net timeout so we NEVER hang the chat or tool execution
-                launch {
-                  delay(60000L) // 60 seconds max
-                  if (!action.result.isCompleted) {
-                    BaoLog.e(TAG, "JS Execution timed out, completing with error.")
-                    BaoLog.d(
-                      TAG,
-                      "Analytics: skill_execution, capability_name=${task.id}, skill_name=$skillName, success=false, error_type=timeout",
-                    )
-                    firebaseAnalytics?.logEvent(
-                      GalleryEvent.SKILL_EXECUTION.id,
-                      Bundle().apply {
-                        putString("capability_name", task.id)
-                        putString("skill_name", skillName)
-                        putString("skill_id", skillId)
-                        putBoolean("success", false)
-                        putString("error_type", "timeout")
-                      },
-                    )
-                    action.result.complete(
-                      "{\"error\": \"Skill execution timed out. Please check network connection.\"}"
-                    )
+                val timeoutJob =
+                  launch {
+                    delay(SKILL_EXECUTION_TIMEOUT_MS)
+                    if (!action.result.isCompleted) {
+                      BaoLog.e(TAG, "JS Execution timed out, completing with error.")
+                      BaoLog.d(
+                        TAG,
+                        "Analytics: skill_execution, capability_name=${task.id}, skill_name=$skillName, success=false, error_type=timeout",
+                      )
+                      firebaseAnalytics?.logEvent(
+                        GalleryEvent.SKILL_EXECUTION.id,
+                        Bundle().apply {
+                          putString("capability_name", task.id)
+                          putString("skill_name", skillName)
+                          putString("skill_id", skillId)
+                          putBoolean("success", false)
+                          putString("error_type", "timeout")
+                        },
+                      )
+                      webViewRef?.stopLoading()
+                      webViewRef?.evaluateJavascript(JS_HARD_STOP, null)
+                      chatWebViewClient.setPageLoadListener(null)
+                      chatViewJavascriptInterface.onResultListener = null
+                      action.result.complete(
+                        "{\"error\": \"Skill execution timed out. Please check network connection.\"}"
+                      )
+                    }
                   }
-                }
 
                 // Load url.
                 suspendCancellableCoroutine<Unit> { continuation ->

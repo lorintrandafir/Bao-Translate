@@ -224,15 +224,6 @@ private suspend fun startCamera(
         }
       }
 
-  runCatching {
-      cameraProvider.unbindAll()
-      cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, imageAnalysis)
-    }
-    .onFailure { exc ->
-      // Binding can fail when no camera is present, the lens is unavailable, or the requested use
-      // cases exceed device capability. Log at error level per official CameraX guidance instead
-      // of swallowing — a silent failure leaves the preview black with no diagnostic trail.
-      BaoLog.e(TAG, "Failed to bind camera use cases to lifecycle", exc)
-    }
+  cameraProvider.rebindSafely(lifecycleOwner, cameraSelector, imageAnalysis)
   return cameraProvider
 }

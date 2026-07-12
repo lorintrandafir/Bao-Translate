@@ -38,11 +38,11 @@ internal class PipelineLifecycleManager(
   @Volatile var openVoiceTargetSe: FloatArray? = null
 
   private fun initOpenVoiceLocked(app: Application) {
-    if (!BaoTranslateModelManager.isOpenVoiceCloneAvailable(app)) return
+    if (!isOpenVoiceCloneAvailable(app)) return
     val conv = OpenVoiceVoiceConverter()
     if (!conv.initialize(
-        BaoTranslateModelManager.getOpenVoiceConverterFile(app),
-        BaoTranslateModelManager.getOpenVoiceRefEncFile(app),
+        getOpenVoiceConverterFile(app),
+        getOpenVoiceRefEncFile(app),
       )
     ) {
       return
@@ -77,9 +77,7 @@ internal class PipelineLifecycleManager(
   }
 
   private suspend fun initializeAllPipelines(app: Application, translationModel: String, sttLanguage: String) {
-    val modelManager = BaoTranslateModelManager
-
-    val whisperDir = modelManager.getWhisperModelDir(app)
+    val whisperDir = getWhisperModelDir(app)
     if (whisperDir.exists()) {
       val whisper = WhisperPipeline(app)
       if (whisper.initialize(whisperDir.absolutePath, sttLanguage)) {
@@ -87,7 +85,7 @@ internal class PipelineLifecycleManager(
       }
     }
 
-    val transDir = modelManager.getTranslationModelDir(app, translationModel)
+    val transDir = getTranslationModelDir(app, translationModel)
     val litertlmFiles = transDir.listFiles { f -> f.extension == "litertlm" }
     if (litertlmFiles != null && litertlmFiles.isNotEmpty()) {
       val translation = TranslationPipeline(app)
@@ -96,7 +94,7 @@ internal class PipelineLifecycleManager(
       }
     }
 
-    val kokoroDir = modelManager.getKokoroModelDir(app)
+    val kokoroDir = getKokoroModelDir(app)
     if (kokoroDir.exists()) {
       val kokoro = KokoroTtsPipeline(app)
       if (kokoro.initialize(kokoroDir.absolutePath)) {
@@ -105,7 +103,7 @@ internal class PipelineLifecycleManager(
     }
     platformTts = PlatformTtsPipeline(app)
 
-    val supertonicDir = modelManager.getSupertonicModelDir(app)
+    val supertonicDir = getSupertonicModelDir(app)
     if (SupertonicTtsPipeline.isModelReady(supertonicDir)) {
       val supertonic = SupertonicTtsPipeline(app)
       if (supertonic.initialize(supertonicDir.absolutePath)) {
@@ -122,11 +120,9 @@ internal class PipelineLifecycleManager(
   }
 
   private suspend fun initializeComponent(app: Application, component: String, translationModel: String, sttLanguage: String) {
-    val modelManager = BaoTranslateModelManager
-
     when (component) {
       "stt" -> {
-        val whisperDir = modelManager.getWhisperModelDir(app)
+        val whisperDir = getWhisperModelDir(app)
         if (whisperDir.exists()) {
           val whisper = WhisperPipeline(app)
           if (whisper.initialize(whisperDir.absolutePath, sttLanguage)) {
@@ -140,7 +136,7 @@ internal class PipelineLifecycleManager(
         }
       }
       "translation" -> {
-        val transDir = modelManager.getTranslationModelDir(app, translationModel)
+        val transDir = getTranslationModelDir(app, translationModel)
         val litertlmFiles = transDir.listFiles { f -> f.extension == "litertlm" }
         if (litertlmFiles != null && litertlmFiles.isNotEmpty()) {
           val translation = TranslationPipeline(app)
@@ -150,7 +146,7 @@ internal class PipelineLifecycleManager(
         }
       }
       "tts" -> {
-        val kokoroDir = modelManager.getKokoroModelDir(app)
+        val kokoroDir = getKokoroModelDir(app)
         if (kokoroDir.exists()) {
           val kokoro = KokoroTtsPipeline(app)
           if (kokoro.initialize(kokoroDir.absolutePath)) {
@@ -158,7 +154,7 @@ internal class PipelineLifecycleManager(
           }
         }
         platformTts = PlatformTtsPipeline(app)
-        val supertonicDir = modelManager.getSupertonicModelDir(app)
+        val supertonicDir = getSupertonicModelDir(app)
         if (SupertonicTtsPipeline.isModelReady(supertonicDir)) {
           val supertonic = SupertonicTtsPipeline(app)
           if (supertonic.initialize(supertonicDir.absolutePath)) {

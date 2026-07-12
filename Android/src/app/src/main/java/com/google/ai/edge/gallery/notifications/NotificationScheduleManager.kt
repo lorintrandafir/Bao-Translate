@@ -69,18 +69,16 @@ constructor(@ApplicationContext private val context: Context) {
   private fun loadNotifications() {
     coroutineScope.launch {
       runCatching {
-
         val file = File(context.filesDir, "scheduled_notifications.pb")
         if (file.exists()) {
           val data = file.inputStream().use { ScheduledNotificationsSerializer.readFrom(it) }
           _scheduledNotifications.value = data.notificationList
         }
-      
-}.onFailure { e ->
-
-        // Ignore on read fault
-      
-}
+      }.onFailure { e ->
+        // Read corruption should not crash bootstrap, but must leave a diagnostic trail —
+        // silent swallow here masks "notifications vanished after upgrade" bugs.
+        BaoLog.e(TAG, "Failed to load scheduled notifications", e)
+      }
     }
   }
 

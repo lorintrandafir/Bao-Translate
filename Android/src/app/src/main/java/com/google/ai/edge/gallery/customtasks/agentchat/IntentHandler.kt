@@ -25,6 +25,7 @@ import androidx.core.content.ContextCompat.checkSelfPermission
 import androidx.core.net.toUri
 import com.google.ai.edge.gallery.notifications.NotificationScheduleManagerEntryPoint
 import com.google.ai.edge.gallery.common.LenientJson
+import com.google.ai.edge.gallery.common.ProjectConfig
 import com.google.ai.edge.gallery.proto.ScheduledNotification
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.serialization.Serializable
@@ -283,14 +284,14 @@ object IntentHandler {
           // must not be forwarded. Allow only the app's own scheme plus http/https (which
           // MainActivity intentionally opens in the browser).
           val scheme = params.deeplink.toUri().scheme
-          if (scheme == "com.google.ai.edge.gallery" || scheme == "http" || scheme == "https") {
+          if (scheme == ProjectConfig.deepLinkScheme || scheme == "http" || scheme == "https") {
             notificationProtoBuilder.setDeeplink(params.deeplink)
           } else {
             BaoLog.w(TAG, "Rejecting notification deeplink with disallowed scheme: $scheme")
           }
         } else if (params.task_id != null && params.model_name != null) {
           val uri =
-            "com.google.ai.edge.gallery://model/${params.task_id}/${params.model_name}"
+            "${ProjectConfig.deepLinkModelPath}${params.task_id}/${params.model_name}"
               .toUri()
               .buildUpon()
               .appendQueryParameter("query", params.message)
@@ -300,7 +301,7 @@ object IntentHandler {
           notificationProtoBuilder.setDeeplink(uri)
         } else if (params.task_id != null) {
           val uri =
-            "com.google.ai.edge.gallery://${params.task_id}/"
+            "${ProjectConfig.deepLinkScheme}://${params.task_id}/"
               .toUri()
               .buildUpon()
               .appendQueryParameter("query", params.message)
@@ -310,7 +311,7 @@ object IntentHandler {
           notificationProtoBuilder.setDeeplink(uri)
         } else {
           val fallbackUri =
-            "com.google.ai.edge.gallery://llm_agent_chat/"
+            "${ProjectConfig.deepLinkScheme}://llm_agent_chat/"
               .toUri()
               .buildUpon()
               .appendQueryParameter("query", params.message)

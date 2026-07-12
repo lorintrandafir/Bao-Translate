@@ -31,7 +31,7 @@ class ModelIntegrityTest {
     File(base, "model.onnx").writeBytes(ByteArray(16))
     File(base, "voices.bin").writeBytes(ByteArray(16))
     File(base, "espeak-ng-data").mkdirs() // present but empty — the confirmed false-Ready case
-    assertFalse(BaoTranslateModelManager.requiredFilesComplete(base, kokoroRequired))
+    assertFalse(requiredFilesComplete(base, kokoroRequired))
   }
 
   @Test
@@ -40,14 +40,14 @@ class ModelIntegrityTest {
     File(base, "model.onnx").writeBytes(ByteArray(16))
     File(base, "voices.bin").createNewFile() // zero-byte truncated write
     File(base, "espeak-ng-data").apply { mkdirs(); File(this, "phontab").writeBytes(ByteArray(4)) }
-    assertFalse(BaoTranslateModelManager.requiredFilesComplete(base, kokoroRequired))
+    assertFalse(requiredFilesComplete(base, kokoroRequired))
   }
 
   @Test
   fun incomplete_whenEntryMissing() {
     val base = tmp.newFolder("base")
     File(base, "model.onnx").writeBytes(ByteArray(16))
-    assertFalse(BaoTranslateModelManager.requiredFilesComplete(base, kokoroRequired))
+    assertFalse(requiredFilesComplete(base, kokoroRequired))
   }
 
   @Test
@@ -56,7 +56,7 @@ class ModelIntegrityTest {
     File(base, "model.onnx").writeBytes(ByteArray(16))
     File(base, "voices.bin").writeBytes(ByteArray(16))
     File(base, "espeak-ng-data").apply { mkdirs(); File(this, "phontab").writeBytes(ByteArray(4)) }
-    assertTrue(BaoTranslateModelManager.requiredFilesComplete(base, kokoroRequired))
+    assertTrue(requiredFilesComplete(base, kokoroRequired))
   }
 
   // ----- BRUTALISATION -----
@@ -71,7 +71,7 @@ class ModelIntegrityTest {
     // Production's isFile() check should reject. Pin.
     assertFalse(
       "directory in place of file must be rejected",
-      BaoTranslateModelManager.requiredFilesComplete(base, kokoroRequired),
+      requiredFilesComplete(base, kokoroRequired),
     )
   }
 
@@ -93,7 +93,7 @@ class ModelIntegrityTest {
     File(base, "espeak-ng-data").apply { mkdirs(); File(this, "phontab").writeBytes(ByteArray(4)) }
     assertTrue(
       "symlink to real file is accepted",
-      BaoTranslateModelManager.requiredFilesComplete(base, kokoroRequired),
+      requiredFilesComplete(base, kokoroRequired),
     )
   }
 
@@ -113,7 +113,7 @@ class ModelIntegrityTest {
     File(base, "espeak-ng-data").apply { mkdirs(); File(this, "phontab").writeBytes(ByteArray(4)) }
     assertFalse(
       "symlink to directory must be rejected",
-      BaoTranslateModelManager.requiredFilesComplete(base, kokoroRequired),
+      requiredFilesComplete(base, kokoroRequired),
     )
   }
 
@@ -128,7 +128,7 @@ class ModelIntegrityTest {
     // On a case-sensitive fs (Linux), this fails. On a case-insensitive fs (macOS HFS+),
     // production's "model.onnx" lookup may find "Model.Onnx" (case-insensitive match).
     val isCaseInsensitiveFs = (System.getProperty("os.name") ?: "").lowercase().contains("mac")
-    val result = BaoTranslateModelManager.requiredFilesComplete(base, kokoroRequired)
+    val result = requiredFilesComplete(base, kokoroRequired)
     if (isCaseInsensitiveFs) {
       // Pin the case-insensitive behavior: it currently passes.
       assertTrue("case-insensitive fs: capital-M file still found", result)
@@ -151,7 +151,7 @@ class ModelIntegrityTest {
     f.setWritable(false)
     File(base, "voices.bin").writeBytes(ByteArray(16))
     File(base, "espeak-ng-data").apply { mkdirs(); File(this, "phontab").writeBytes(ByteArray(4)) }
-    val result = BaoTranslateModelManager.requiredFilesComplete(base, kokoroRequired)
+    val result = requiredFilesComplete(base, kokoroRequired)
     // Currently: production does not check writability. The read-only file is accepted
     // because isFile() && length() > 0. Document.
     f.setReadable(true)
@@ -173,7 +173,7 @@ class ModelIntegrityTest {
     val malformedRequired = listOf("model.onnx/", "voices.bin", "espeak-ng-data")
     assertFalse(
       "trailing slash on a required file path must be rejected",
-      BaoTranslateModelManager.requiredFilesComplete(base, malformedRequired),
+      requiredFilesComplete(base, malformedRequired),
     )
   }
 
@@ -183,7 +183,7 @@ class ModelIntegrityTest {
     val base = tmp.newFolder("base")
     val many = (0 until 1000).map { "entry_$it" }
     val start = System.currentTimeMillis()
-    val result = BaoTranslateModelManager.requiredFilesComplete(base, many)
+    val result = requiredFilesComplete(base, many)
     val elapsed = System.currentTimeMillis() - start
     assertFalse("1000 missing entries must return false quickly", result)
     assertTrue("must complete in <100ms (took ${elapsed}ms)", elapsed < 100)
@@ -194,7 +194,7 @@ class ModelIntegrityTest {
   @Test
   fun incomplete_whenBaseDirectoryMissing() {
     val missing = File(tmp.newFolder("parent"), "does_not_exist")
-    val result = BaoTranslateModelManager.requiredFilesComplete(missing, kokoroRequired)
+    val result = requiredFilesComplete(missing, kokoroRequired)
     assertFalse("non-existent base must be incomplete", result)
   }
 
@@ -203,7 +203,7 @@ class ModelIntegrityTest {
   fun complete_whenRequiredListEmpty() {
     val base = tmp.newFolder("base")
     assertTrue("empty required list is vacuously complete",
-      BaoTranslateModelManager.requiredFilesComplete(base, emptyList()))
+      requiredFilesComplete(base, emptyList()))
   }
 
   // ----- Single-entry required list: must work like the multi-entry case.
@@ -212,13 +212,13 @@ class ModelIntegrityTest {
     val base = tmp.newFolder("base")
     File(base, "only.txt").writeBytes(ByteArray(16))
     assertTrue("single entry present is complete",
-      BaoTranslateModelManager.requiredFilesComplete(base, listOf("only.txt")))
+      requiredFilesComplete(base, listOf("only.txt")))
   }
 
   @Test
   fun incomplete_singleEntryMissing() {
     val base = tmp.newFolder("base")
     assertFalse("single entry missing is incomplete",
-      BaoTranslateModelManager.requiredFilesComplete(base, listOf("only.txt")))
+      requiredFilesComplete(base, listOf("only.txt")))
   }
 }

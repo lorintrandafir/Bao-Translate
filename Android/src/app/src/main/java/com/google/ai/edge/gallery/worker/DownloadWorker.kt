@@ -27,6 +27,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
+import com.google.ai.edge.gallery.MainActivity
 import com.google.ai.edge.gallery.data.KEY_MODEL_COMMIT_HASH
 import com.google.ai.edge.gallery.data.KEY_MODEL_DOWNLOAD_ACCESS_TOKEN
 import com.google.ai.edge.gallery.data.KEY_MODEL_DOWNLOAD_ERROR_MESSAGE
@@ -86,11 +87,47 @@ internal fun resolveResumeDecision(
 
 private const val FOREGROUND_NOTIFICATION_CHANNEL_ID = "model_download_channel_foreground"
 private const val SHARED_NOTIFICATION_ID = 1001
-private var channelCreated = false
-// Shared throttle timestamp across all worker instances to prevent notification spam
-private var lastSharedNotificationTs = 0L
-// Track which worker "owns" the foreground notification to avoid duplicate setForeground calls
-private var activeForegroundWorkerId: String? = null
+
+/**
+ * Process-wide mutable state for download worker coordination. All access must go through
+ * [DownloadWorkerRegistry] which synchronizes mutations. Concurrent workers share a single
+ * foreground notification ID and a 1-second throttle for setForeground calls.
+ */
+private object DownloadWorkerRegistry {
+  @Volatile var channelCreated: Boolean = false
+  @Volatile var lastSharedNotificationTs: Long = 0L
+  @Volatile var activeForegroundWorkerId: String? = null
+
+  @Synchronized
+  fun markChannelCreated() { channelCreated = true }
+
+  @Synchronized
+  fun claimForeground(workerId: String): Boolean {
+    if (activeForegroundWorkerId == null || activeForegroundWorkerId == workerId) {
+      activeForegroundWorkerId = workerId
+      return true
+    }
+    return false
+  }
+
+  @Synchronized
+  fun releaseForeground(workerId: String) {
+    if (activeForegroundWorkerId == workerId) {
+      activeForegroundWorkerId = null
+    }
+  }
+
+  /**
+   * Returns true iff the caller should emit a setForeground call. Throttles to once per second
+   * across all workers and serializes so two concurrent workers can't both pass the check.
+   */
+  @Synchronized
+  fun shouldEmitNotification(curTs: Long): Boolean {
+    if (curTs - lastSharedNotificationTs < 1000L) return false
+    lastSharedNotificationTs = curTs
+    return true
+  }
+}
 
 class DownloadWorker(context: Context, params: WorkerParameters) :
   CoroutineWorker(context, params) {
@@ -104,7 +141,7 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
   private val workerId: String = params.id.toString()
 
   init {
-    if (!channelCreated) {
+    if (!DownloadWorkerRegistry.channelCreated) {
       // Create a notification channel for showing notifications for model downloading progress.
       val channel =
         NotificationChannel(
@@ -115,7 +152,7 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
           )
           .apply { description = "Notifications for model downloading" }
       notificationManager.createNotificationChannel(channel)
-      channelCreated = true
+      DownloadWorkerRegistry.markChannelCreated()
     }
   }
 
@@ -276,7 +313,7 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
                     .build()
                 )
                 // Throttle notification updates to avoid rate limiting (max 1 per second across all workers)
-                if (curTs - lastSharedNotificationTs >= 1000L) {
+                if (DownloadWorkerRegistry.shouldEmitNotification(curTs)) {
                   setForeground(
                     createForegroundInfo(
                       progress = if (totalBytes > 0) (downloadedBytes * 100 / totalBytes).toInt() else 0,
@@ -284,7 +321,6 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
                     )
                   )
                   BaoLog.d(TAG, "downloadedBytes: $downloadedBytes")
-                  lastSharedNotificationTs = curTs
                 }
               }
             }
@@ -403,7 +439,7 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
     val content = "Downloading in progress: $progress%"
 
     val intent =
-      Intent(applicationContext, Class.forName("com.google.ai.edge.gallery.MainActivity")).apply {
+      Intent(applicationContext, MainActivity::class.java).apply {
         flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
       }
     val pendingIntent =

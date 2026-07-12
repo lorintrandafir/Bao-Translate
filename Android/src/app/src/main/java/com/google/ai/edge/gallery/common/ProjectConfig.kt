@@ -21,16 +21,22 @@ import com.google.ai.edge.gallery.BuildConfig
 import net.openid.appauth.AuthorizationServiceConfiguration
 
 object ProjectConfig {
-  // Hugging Face Client ID.
-  //
-  const val clientId = "REPLACE_WITH_YOUR_CLIENT_ID_IN_HUGGINGFACE_APP"
+  /** Custom URI scheme registered with `appAuthRedirectScheme` in build.gradle.kts.
+   *  Used for internal deep links and OAuth redirects — single source of truth. */
+  const val deepLinkScheme = "com.google.ai.edge.gallery"
 
-  // Registered redirect URI.
-  //
-  // The scheme needs to match the
-  // "android.defaultConfig.manifestPlaceholders["appAuthRedirectScheme"]" field in
-  // "build.gradle.kts".
-  const val redirectUri = "REPLACE_WITH_YOUR_REDIRECT_URI_IN_HUGGINGFACE_APP"
+  const val deepLinkModelPath = "$deepLinkScheme://model/"
+
+  const val deepLinkGlobalModelManager = "$deepLinkScheme://global_model_manager"
+
+  // Hugging Face OAuth client ID and redirect URI — injected from gradle.properties via
+  // BuildConfig so credentials never live as literals in source. Defaults are placeholders
+  // that compile but fail at runtime; set real values via `bao.hfOauth*` gradle properties
+  // (in a gitignored local gradle.properties or CI secret) before a source build that needs
+  // model downloads. See DEVELOPMENT.md for HF OAuth app registration steps.
+  val clientId: String = BuildConfig.HF_OAUTH_CLIENT_ID
+  val redirectUri: String = BuildConfig.HF_OAUTH_REDIRECT_URI
+  val redirectScheme: String = BuildConfig.HF_OAUTH_REDIRECT_SCHEME
 
   // OAuth 2.0 Endpoints (Authorization + Token Exchange)
   private const val authEndpoint = "https://huggingface.co/oauth/authorize"

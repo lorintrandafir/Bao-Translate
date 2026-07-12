@@ -15,7 +15,6 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.focus.onFocusChanged
@@ -62,10 +61,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
-import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipAnchorPosition
 import androidx.compose.material3.TooltipDefaults
@@ -316,162 +313,39 @@ fun BaoTranslateScreen(
   Scaffold(
     floatingActionButtonPosition = if (showFaceToFace) FabPosition.Center else FabPosition.End,
     topBar = {
-      TopAppBar(
-        title = {
-          Text(
-            stringResource(R.string.bao_translate_title),
-            style = if (isTablet) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleLarge,
-          )
+      BaoTranslateTopBar(
+        uiState = uiState,
+        showConversationMode = showConversationMode,
+        showFaceToFace = showFaceToFace,
+        connectionState = connectionState,
+        isTablet = isTablet,
+        maxWidth = maxWidth,
+        onClearTranscripts = viewModel::clearTranscripts,
+        onToggleConversationMode = { showConversationMode = !showConversationMode },
+        onEnterFaceToFace = {
+          showConversationMode = false
+          showFaceToFace = true
+          viewModel.setFaceToFaceMode(true)
         },
-        actions = {
-          val conversationModeDesc = stringResource(R.string.bao_translate_conversation_mode)
-          val settingsDesc = stringResource(R.string.settings_title)
-          val clearDesc = stringResource(R.string.cd_bao_translate_clear)
-          // Clear the current conversation transcript (local-only). Shown only when there is
-          // something to clear and the user is on the translate view, not in conversation pairing.
-          if (uiState.modelsReady && !showConversationMode && uiState.transcripts.isNotEmpty()) {
-            IconButton(
-              onClick = { viewModel.clearTranscripts() },
-              modifier = Modifier.semantics { contentDescription = clearDesc },
-            ) {
-              Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
-            }
-          }
-          if (uiState.modelsReady) {
-            val conversationTooltipState = rememberTooltipState(isPersistent = true)
-            val conversationTooltipScope = rememberCoroutineScope()
-            TooltipBox(
-              positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
-              tooltip = { PlainTooltip { Text(stringResource(R.string.bao_translate_tooltip_conversation)) } },
-              state = conversationTooltipState,
-            ) {
-              IconButton(
-                onClick = { showConversationMode = !showConversationMode },
-                modifier = Modifier
-                  .semantics { contentDescription = conversationModeDesc }
-                  .onFocusChanged { focusState ->
-                    if (focusState.isFocused) {
-                      conversationTooltipScope.launch { conversationTooltipState.show() }
-                    }
-                  },
-              ) {
-                Icon(
-                  imageVector = Icons.Default.People,
-                  contentDescription = null,
-                  // Primary tint while the pairing sheet is open OR a peer is actively connected, so
-                  // the user can see they are in a live conversation after returning to the main view.
-                  tint = if (showConversationMode || connectionState == ConnectionState.CONNECTED) {
-                    MaterialTheme.colorScheme.primary
-                  } else {
-                    MaterialTheme.colorScheme.onSurface
-                  },
-                )
-              }
-            }
-          }
-          if (uiState.modelsReady) {
-            val faceToFaceDesc = stringResource(R.string.bao_face_to_face_mode)
-            IconButton(
-              onClick = {
-                if (showFaceToFace) {
-                  showFaceToFace = false
-                  viewModel.setFaceToFaceMode(false)
-                } else {
-                  showConversationMode = false
-                  showFaceToFace = true
-                  viewModel.setFaceToFaceMode(true)
-                }
-              },
-              modifier = Modifier.semantics { contentDescription = faceToFaceDesc },
-            ) {
-              Icon(
-                imageVector = Icons.Default.SwapVert,
-                contentDescription = null,
-                tint = if (showFaceToFace) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-              )
-            }
-          }
-          IconButton(
-            onClick = {
-              viewModel.refreshAudioDevice()
-              showSettings = true
-            },
-            modifier = Modifier.semantics { contentDescription = settingsDesc },
-          ) {
-            Icon(imageVector = Icons.Default.Settings, contentDescription = null)
-          }
+        onExitFaceToFace = {
+          showFaceToFace = false
+          viewModel.setFaceToFaceMode(false)
         },
-        modifier = Modifier.widthIn(max = maxWidth),
+        onOpenSettings = {
+          viewModel.refreshAudioDevice()
+          showSettings = true
+        },
       )
     },
     floatingActionButton = {
-      // No FAB in face-to-face: each rotated panel owns its ConversationTurnControl, which is the
-      // single start/stop affordance readable from both sides of the table.
-      val showFab = uiState.modelsReady && !showFaceToFace && (
-        !showConversationMode || connectionState == ConnectionState.CONNECTED
+      RecordingControlFab(
+        uiState = uiState,
+        showFaceToFace = showFaceToFace,
+        showConversationMode = showConversationMode,
+        connectionState = connectionState,
+        onStartRecording = { startRecordingWithPermission() },
+        onStopRecording = viewModel::stopRecording,
       )
-      if (showFab) {
-        val startDesc = stringResource(R.string.cd_bao_translate_start)
-        val stopDesc = stringResource(R.string.cd_bao_translate_stop)
-        val canUseMic = uiState.modelsReady &&
-          !uiState.isInitializing &&
-          !uiState.isStartingRecording &&
-          !uiState.isProcessing &&
-          !uiState.isSpeaking &&
-          uiState.pipelineStatus !is PipelineStatus.ModelsNotReady
-        val recordingControlActive = uiState.isRecording || uiState.isStartingRecording
-        val tooltipState = rememberTooltipState(isPersistent = true)
-        val tooltipScope = rememberCoroutineScope()
-        TooltipBox(
-          positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
-          tooltip = { PlainTooltip { Text(stringResource(R.string.bao_translate_tooltip_record)) } },
-          state = tooltipState,
-        ) {
-          Box(
-            modifier = Modifier
-              .size(Dimensions.Component.fabSize)
-              .clip(CircleShape)
-              .background(
-                when {
-                  recordingControlActive -> MaterialTheme.customColors.recordButtonBgColor
-                  canUseMic -> MaterialTheme.colorScheme.primary
-                  else -> MaterialTheme.colorScheme.surfaceVariant
-                }
-              )
-              .combinedClickable(
-                onClick = {
-                  when {
-                    recordingControlActive -> viewModel.stopRecording()
-                    canUseMic -> startRecordingWithPermission()
-                  }
-                },
-                onLongClick = {
-                  tooltipScope.launch { tooltipState.show() }
-                }
-              )
-              .onFocusChanged { focusState ->
-                if (focusState.isFocused) {
-                  tooltipScope.launch { tooltipState.show() }
-                }
-              }
-              .semantics {
-                contentDescription = if (recordingControlActive) stopDesc else startDesc
-              },
-            contentAlignment = Alignment.Center,
-          ) {
-            Icon(
-              imageVector = if (recordingControlActive) Icons.Default.Stop else Icons.Default.Mic,
-              contentDescription = null,
-              modifier = Modifier.size(Dimensions.Icon.large),
-              tint = when {
-                recordingControlActive -> MaterialTheme.colorScheme.onPrimary
-                canUseMic -> MaterialTheme.colorScheme.onPrimary
-                else -> MaterialTheme.colorScheme.onSurfaceVariant
-              },
-            )
-          }
-        }
-      }
     },
   ) { paddingValues ->
     Box(modifier = Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.TopCenter) {

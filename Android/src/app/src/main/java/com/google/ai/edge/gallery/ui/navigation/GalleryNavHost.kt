@@ -16,30 +16,21 @@
 
 package com.google.ai.edge.gallery.ui.navigation
 
-import android.net.Uri
 import android.os.Bundle
 import com.google.ai.edge.gallery.common.BaoLog
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.EaseOutExpo
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.FiniteAnimationSpec
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
@@ -49,18 +40,12 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -73,20 +58,15 @@ import androidx.navigation.navArgument
 import com.google.ai.edge.gallery.GalleryEvent
 import com.google.ai.edge.gallery.customtasks.common.CustomTaskData
 import com.google.ai.edge.gallery.customtasks.common.CustomTaskDataForBuiltinTask
+import com.google.ai.edge.gallery.data.BuiltInTaskId
 import com.google.ai.edge.gallery.data.Model
-import com.google.ai.edge.gallery.data.ModelDownloadStatusType
-import com.google.ai.edge.gallery.data.RuntimeType
 import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.data.isLegacyTasks
 import com.google.ai.edge.gallery.firebaseAnalytics
 import com.google.ai.edge.gallery.ui.benchmark.BenchmarkScreen
-import com.google.ai.edge.gallery.ui.common.ErrorDialog
-import com.google.ai.edge.gallery.ui.common.ModelPageAppBar
-import com.google.ai.edge.gallery.ui.common.chat.ModelDownloadStatusInfoPanel
 import com.google.ai.edge.gallery.ui.home.HomeScreen
 import com.google.ai.edge.gallery.ui.home.PromoScreenGm4
 import com.google.ai.edge.gallery.ui.modelmanager.GlobalModelManager
-import com.google.ai.edge.gallery.ui.modelmanager.ModelInitializationStatusType
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManager
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.notifications.NotificationsScreen
@@ -95,68 +75,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val TAG = "AGGalleryNavGraph"
-private const val ROUTE_HOMESCREEN = "homepage"
-private const val ROUTE_MODEL_LIST = "model_list"
-private const val ROUTE_MODEL = "route_model"
-private const val ROUTE_BENCHMARK = "benchmark"
-private const val ROUTE_MODEL_MANAGER = "model_manager"
-private const val ROUTE_NOTIFICATIONS = "notifications"
-private const val ROUTE_BAO_TRANSLATE = "bao_translate"
-private const val ENTER_ANIMATION_DURATION_MS = 500
-private val ENTER_ANIMATION_EASING = EaseOutExpo
-private const val ENTER_ANIMATION_DELAY_MS = 100
-
-private const val EXIT_ANIMATION_DURATION_MS = 500
-private val EXIT_ANIMATION_EASING = EaseOutExpo
-
-private fun Model.supportsBenchmark(): Boolean = isLlm && runtimeType == RuntimeType.LITERT_LM
-
-private fun modelRoute(taskId: String, model: Model, query: String? = null): String {
-  val base = "$ROUTE_MODEL/${Uri.encode(taskId)}/${Uri.encode(model.name)}"
-  return if (!query.isNullOrEmpty()) "$base?query=${Uri.encode(query)}" else base
-}
-
-private fun benchmarkRoute(model: Model): String = "$ROUTE_BENCHMARK/${Uri.encode(model.name)}"
-
-private fun enterTween(): FiniteAnimationSpec<IntOffset> {
-  return tween(
-    ENTER_ANIMATION_DURATION_MS,
-    easing = ENTER_ANIMATION_EASING,
-    delayMillis = ENTER_ANIMATION_DELAY_MS,
-  )
-}
-
-private fun exitTween(): FiniteAnimationSpec<IntOffset> {
-  return tween(EXIT_ANIMATION_DURATION_MS, easing = EXIT_ANIMATION_EASING)
-}
-
-private fun AnimatedContentTransitionScope<*>.slideEnter(): EnterTransition {
-  return slideIntoContainer(
-    animationSpec = enterTween(),
-    towards = AnimatedContentTransitionScope.SlideDirection.Left,
-  )
-}
-
-private fun AnimatedContentTransitionScope<*>.slideExit(): ExitTransition {
-  return slideOutOfContainer(
-    animationSpec = exitTween(),
-    towards = AnimatedContentTransitionScope.SlideDirection.Right,
-  )
-}
-
-private fun AnimatedContentTransitionScope<*>.slideUpEnter(): EnterTransition {
-  return slideIntoContainer(
-    animationSpec = enterTween(),
-    towards = AnimatedContentTransitionScope.SlideDirection.Up,
-  )
-}
-
-private fun AnimatedContentTransitionScope<*>.slideDownExit(): ExitTransition {
-  return slideOutOfContainer(
-    animationSpec = exitTween(),
-    towards = AnimatedContentTransitionScope.SlideDirection.Down,
-  )
-}
 
 /** Navigation routes. */
 @Composable
@@ -215,7 +133,9 @@ fun GalleryNavHost(
             navigateToTaskScreen = { task ->
               pickedTask = task
               enableModelListAnimation = true
-              val route = if (task.id == "bao_translate") ROUTE_BAO_TRANSLATE else ROUTE_MODEL_LIST
+              val route =
+                if (task.id == BuiltInTaskId.BAO_TRANSLATE) ROUTE_BAO_TRANSLATE
+                else ROUTE_MODEL_LIST
               navController.navigate(route)
               firebaseAnalytics?.logEvent(
                 GalleryEvent.CAPABILITY_SELECT.id,
@@ -408,7 +328,8 @@ fun GalleryNavHost(
       enterTransition = { slideEnter() },
       exitTransition = { slideExit() },
     ) {
-      val customTask = modelManagerViewModel.getCustomTaskByTaskId("bao_translate")
+      val customTask =
+        modelManagerViewModel.getCustomTaskByTaskId(BuiltInTaskId.BAO_TRANSLATE)
       val innerPadding = WindowInsets.statusBars.asPaddingValues()
       BackHandler {
         enableHomeScreenAnimation = false
@@ -506,235 +427,5 @@ fun GalleryNavHost(
     }
   }
 
-  // Handle incoming intents for deep links
-  val intent = androidx.activity.compose.LocalActivity.current?.intent
-  val data = intent?.data
-  var handledDeepLinkIntent by remember { mutableStateOf<android.content.Intent?>(null) }
-
-  // Wait until the model manager has been initialized and the tasks are available.
-  if (
-    intent != null &&
-      data != null &&
-      handledDeepLinkIntent !== intent &&
-      modelManagerUiState.tasks.isNotEmpty()
-  ) {
-    val uriStr = data.toString()
-    val modelAllowlistFinished = !modelManagerUiState.loadingModelAllowlist
-    var handled = false
-    BaoLog.d(TAG, "navigation link clicked: $data")
-    // 1. Precise model deep links: com.google.ai.edge.gallery://model/<taskId>/<modelName>
-    if (uriStr.startsWith("com.google.ai.edge.gallery://model/")) {
-      if (data.pathSegments.size >= 2) {
-        val taskId = data.pathSegments.get(data.pathSegments.size - 2)
-        val modelName = data.pathSegments.last()
-        val queryStr = data.getQueryParameter("query")
-        val model = modelManagerViewModel.getModelByName(name = modelName)
-        if (model != null) {
-          navController.navigate(modelRoute(taskId = taskId, model = model, query = queryStr))
-          handled = true
-        } else if (modelAllowlistFinished) {
-          BaoLog.e(TAG, "No model found for deep link: $data")
-          handled = true
-        }
-      } else {
-        BaoLog.e(TAG, "Malformed deep link URI received: $data")
-        handled = true
-      }
-    } else if (data.host == "benchmark") {
-      val requestedModelName = data.pathSegments.lastOrNull()
-      val model =
-        if (requestedModelName.isNullOrBlank()) {
-          modelManagerViewModel.getAllModels().firstOrNull { it.supportsBenchmark() }
-        } else {
-          modelManagerViewModel.getModelByName(name = requestedModelName)
-        }
-      if (model?.supportsBenchmark() == true) {
-        navController.navigate(benchmarkRoute(model))
-        handled = true
-      } else if (modelAllowlistFinished) {
-        BaoLog.e(TAG, "No benchmark-capable model found for deep link: $data")
-        handled = true
-      }
-    } else if (uriStr == "com.google.ai.edge.gallery://global_model_manager") {
-      navController.navigate(ROUTE_MODEL_MANAGER)
-      handled = true
-    } else {
-      // 2. Dynamic task-level deep links: com.google.ai.edge.gallery://<taskId>
-      val host = data.host
-      if (host != null) {
-        val queryStr = data.getQueryParameter("query")
-        val task = modelManagerUiState.tasks.find { it.id == host }
-        if (task != null) {
-          // Pick the first successfully downloaded model or the default active model for this task
-          val defaultModel =
-            task.models.firstOrNull { model ->
-              modelManagerUiState.modelDownloadStatus[model.name]?.status ==
-                ModelDownloadStatusType.SUCCEEDED
-            } ?: task.models.firstOrNull()
-
-          if (defaultModel != null) {
-            navController.navigate(
-              modelRoute(taskId = task.id, model = defaultModel, query = queryStr)
-            )
-            handled = true
-          } else if (modelAllowlistFinished) {
-            BaoLog.e(TAG, "No available model found for task: $host")
-            handled = true
-          }
-        } else if (modelAllowlistFinished) {
-          BaoLog.e(TAG, "No task found for deep link: $data")
-          handled = true
-        }
-      } else if (modelAllowlistFinished) {
-        BaoLog.e(TAG, "Malformed deep link URI received: $data")
-        handled = true
-      }
-    }
-
-    if (handled) {
-      handledDeepLinkIntent = intent
-    }
-  }
-}
-
-@Composable
-private fun CustomTaskScreen(
-  task: Task,
-  modelManagerViewModel: ModelManagerViewModel,
-  disableAppBarControls: Boolean,
-  hideTopBar: Boolean,
-  useThemeColor: Boolean,
-  onNavigateUp: () -> Unit,
-  content: @Composable (bottomPadding: Dp) -> Unit,
-) {
-  val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
-  val selectedModel = modelManagerUiState.selectedModel
-  val scope = rememberCoroutineScope()
-  val context = LocalContext.current
-  var navigatingUp by remember { mutableStateOf(false) }
-  var showErrorDialog by remember { mutableStateOf(false) }
-  var appBarHeight by remember { mutableIntStateOf(0) }
-
-  val handleNavigateUp = {
-    navigatingUp = true
-    onNavigateUp()
-  }
-
-  // Handle system's edge swipe.
-  BackHandler { handleNavigateUp() }
-
-  // Initialize model when model/download state changes.
-  val curDownloadStatus = modelManagerUiState.modelDownloadStatus[selectedModel.name]
-  LaunchedEffect(curDownloadStatus, selectedModel.name) {
-    if (!navigatingUp) {
-      if (curDownloadStatus?.status == ModelDownloadStatusType.SUCCEEDED) {
-        BaoLog.d(
-          TAG,
-          "Initializing model '${selectedModel.name}' from CustomTaskScreen launched effect",
-        )
-        modelManagerViewModel.initializeModel(context, task = task, model = selectedModel)
-      }
-    }
-  }
-
-  val modelInitializationStatus = modelManagerUiState.modelInitializationStatus[selectedModel.name]
-  LaunchedEffect(modelInitializationStatus) {
-    showErrorDialog = modelInitializationStatus?.status == ModelInitializationStatusType.ERROR
-  }
-
-  Scaffold(
-    topBar = {
-      AnimatedVisibility(
-        !hideTopBar,
-        enter = slideInVertically { -it },
-        exit = slideOutVertically { -it },
-      ) {
-        ModelPageAppBar(
-          task = task,
-          model = selectedModel,
-          modelManagerViewModel = modelManagerViewModel,
-          inProgress = disableAppBarControls,
-          modelPreparing = disableAppBarControls,
-          shouldShowHistoryButton = false,
-          useThemeColor = useThemeColor,
-          modifier =
-            Modifier.onGloballyPositioned { coordinates -> appBarHeight = coordinates.size.height },
-          hideModelSelector = task.models.size <= 1,
-          onConfigChanged = { _, _ -> },
-          onBackClicked = { handleNavigateUp() },
-          onModelSelected = { prevModel, newSelectedModel ->
-            val instanceToCleanUp = prevModel.instance
-            scope.launch(Dispatchers.Default) {
-              // Clean up prev model.
-              if (prevModel.name != newSelectedModel.name) {
-                modelManagerViewModel.cleanupModel(
-                  context = context,
-                  task = task,
-                  model = prevModel,
-                  instanceToCleanUp = instanceToCleanUp,
-                )
-              }
-
-              // Update selected model.
-              BaoLog.d(TAG, "from model picker. new: ${newSelectedModel.name}")
-              modelManagerViewModel.selectModel(model = newSelectedModel)
-            }
-          },
-        )
-      }
-    }
-  ) { innerPadding ->
-    // Calculate the target height in Dp for the content's top padding.
-    val targetPaddingDp =
-      if (!hideTopBar && appBarHeight > 0) {
-        // Convert measured pixel height to Dp
-        with(LocalDensity.current) { appBarHeight.toDp() }
-      } else {
-        WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-      }
-
-    // Animate the actual top padding value.
-    val animatedTopPadding by
-      animateDpAsState(
-        targetValue = targetPaddingDp,
-        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
-        label = "TopPaddingAnimation",
-      )
-
-    Box(
-      modifier =
-        Modifier.padding(
-          top = if (!hideTopBar) innerPadding.calculateTopPadding() else animatedTopPadding,
-          start = innerPadding.calculateStartPadding(LocalLayoutDirection.current),
-          end = innerPadding.calculateStartPadding(LocalLayoutDirection.current),
-        )
-    ) {
-      val curModelDownloadStatus = modelManagerUiState.modelDownloadStatus[selectedModel.name]
-      AnimatedContent(
-        targetState = curModelDownloadStatus?.status == ModelDownloadStatusType.SUCCEEDED
-      ) { targetState ->
-        when (targetState) {
-          // Main UI when model is downloaded.
-          true -> content(innerPadding.calculateBottomPadding())
-          // Model download
-          false ->
-            ModelDownloadStatusInfoPanel(
-              model = selectedModel,
-              task = task,
-              modelManagerViewModel = modelManagerViewModel,
-            )
-        }
-      }
-    }
-  }
-
-  if (showErrorDialog) {
-    ErrorDialog(
-      error = modelInitializationStatus?.error ?: "",
-      onDismiss = {
-        showErrorDialog = false
-        onNavigateUp()
-      },
-    )
-  }
+  handleDeepLink(navController, modelManagerViewModel, modelManagerUiState)
 }
