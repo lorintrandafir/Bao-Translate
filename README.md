@@ -12,7 +12,7 @@
   <img alt="Version: 1.0.15" src="https://img.shields.io/badge/version-1.0.15-orange.svg" />
   <img alt="Languages: 12 targets" src="https://img.shields.io/badge/languages-12%20targets-success.svg" />
   <img alt="Runtime: LiteRT-LM, sherpa-onnx, ONNX Runtime" src="https://img.shields.io/badge/runtime-LiteRT--LM%20%7C%20sherpa--onnx%20%7C%20ONNX-4285F4.svg" />
-  <img alt="Unit tests: 532 passing" src="https://img.shields.io/badge/unit%20tests-532%20passing-success.svg" />
+  <img alt="Unit tests: 560 passing" src="https://img.shields.io/badge/unit%20tests-560%20passing-success.svg" />
   <img alt="Android Lint: clean" src="https://img.shields.io/badge/android%20lint-0%20errors-success.svg" />
   <img alt="P2P: LibreDrop Quick Share" src="https://img.shields.io/badge/p2p-LibreDrop%20Quick%20Share-blueviolet.svg" />
 </p>
@@ -128,7 +128,7 @@ sequenceDiagram
 | Receive over Wi-Fi LAN | Working |
 | Send over Wi-Fi LAN | Working |
 | Wi-Fi Direct / hotspot / Bluetooth upgrade | Medium providers exist; the sender does not negotiate a bandwidth upgrade |
-| Consent surface | Heads-up notification actions; no in-app trampoline activity |
+| Consent surface | In-app modal (`LibreDropConsentActivity`) with heads-up notification actions as fallback; both drive the same decision sink |
 | QR pairing, AI file descriptions, voice share | Code present, no UI entry point |
 
 Peer-supplied filenames are sanitized before they reach MediaStore or a `File` — separators, control characters, NUL, leading dots and `..` segments are all neutralised. Full detail, including known gaps, is in [docs/LIBREDROP.md](docs/LIBREDROP.md).
@@ -263,9 +263,9 @@ Current state of the JVM unit suite:
 
 | Metric | Value |
 | --- | --- |
-| Unit tests | 532 passing, 0 failing, 0 skipped, 42 classes |
-| Strict gate (`@Category(Strict)`) | 532 of 532 — the whole suite is gating |
-| LibreDrop tests | 149 |
+| Unit tests | 560 passing, 0 failing, 0 skipped, 46 classes |
+| Strict gate (`@Category(Strict)`) | 560 of 560 — the whole suite is gating |
+| LibreDrop tests | 154 |
 | Android Lint (debug) | 0 errors |
 
 The single gate that runs everything:
@@ -301,7 +301,7 @@ real source found four places where a green run does not mean the behaviour was 
 
 Read a green `connectedDebugAndroidTest` accordingly: the two-device Nearby path is only actually
 exercised when a second device is present and in Conversation Mode. The JVM suite has no equivalent
-gap — all 532 of its methods assert, none are `@Ignore`d, and its four `assume*` calls are
+gap — all 560 of its methods assert, none are `@Ignore`d, and its four `assume*` calls are
 filesystem-capability guards that did not fire on this machine (`skipped=0` in every run).
 
 Two hardening rules the suite enforces on itself, not just on production code:
@@ -311,6 +311,19 @@ Two hardening rules the suite enforces on itself, not just on production code:
   as a slow test.
 - `smokeE2e` parses the instrumentation output rather than trusting the exit code, because
   `adb shell am instrument` returns 0 even when tests fail or the process crashes.
+- `DeadSurfaceGuardTest` re-derives the set of production types with no caller in any source set and
+  fails on anything newly unreferenced. The compiler happily builds code nobody calls and Lint's
+  unused-symbol checks do not span source sets, which is how ~2.9k lines of shipped-but-unwired
+  Kotlin accumulated unnoticed. Known-dead entries are listed with a reason; the list is a ratchet.
+
+### Thinnest coverage
+
+Measured main-LOC vs test-LOC per package, the largest remaining gaps are **not** in LibreDrop —
+that went from the worst-covered area to among the best. They are `ui/common` (~15k LOC) and
+`customtasks/agentchat` (~8.2k LOC). The first tests in `ui/common` now exist
+(`WebViewTrustAndFileNameTest` for WebView origin trust and imported-model file naming,
+`SkillStorageBridgeTest` for the JavaScript storage bridge's quotas);
+the rest of both packages is where the next coverage work belongs.
 
 ### What is not covered
 

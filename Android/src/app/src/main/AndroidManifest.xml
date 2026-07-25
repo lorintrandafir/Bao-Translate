@@ -133,6 +133,19 @@
             </intent-filter>
         </service>
 
+        <!-- LibreDrop consent trampoline. Launched by ReceiverForegroundService when an inbound
+             transfer needs a decision while the app is foregrounded. singleTop + the dispatcher's
+             REORDER_TO_FRONT flag means a second request re-targets this instance instead of
+             stacking. Not exported: only the in-process service ever starts it.
+             excludeFromRecents keeps a transient consent prompt out of the task switcher. -->
+        <activity
+            android:name="com.google.ai.edge.gallery.customtasks.libredrop.LibreDropConsentActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@style/Theme.Gallery.ConsentDialog" />
+
         <!-- LibreDrop inbound listener. `connectedDevice` is the foreground-service type
              Android documents for peer-to-peer transfer over Wi-Fi/BLE; the service calls
              ServiceCompat.startForeground with FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE and

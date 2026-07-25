@@ -20,7 +20,7 @@ Accept, then the file goes across in chunks and gets rebuilt on the other side.
 | Receive | Working | "Receive files" switch on the LibreDrop screen |
 | Send over Wi-Fi LAN | Working | "Add" → pick files → "Scan" → pick a peer → "Send" |
 | Send over Wi-Fi Direct / hotspot / Bluetooth | Not wired | Providers exist in `discovery/medium`; the sender does not yet negotiate a bandwidth upgrade |
-| Consent trampoline activity | Not present | Consent is answered from the heads-up notification's Accept/Reject actions |
+| Consent trampoline activity | Working | `LibreDropConsentActivity` — foreground modal; heads-up notification actions remain the fallback |
 | QR-bonded pairing | Code present, not surfaced | `protocol/qr` has no UI entry point |
 | AI file descriptions / voice share | Code present, not surfaced | `FileMetadataTranslator`, `VoiceShareController`, `ShareConfirmationTts`, `LibreDropLlmInterface` have no callers |
 
@@ -32,7 +32,7 @@ aspirational until they are wired.
 
 A reference audit over the real on-disk tree (every declared `class`/`object`/`interface` checked
 for a reference outside its own file, Hilt- and manifest-wired types excluded by hand) puts
-**2,715 lines of LibreDrop with zero callers**:
+**2,865 lines of LibreDrop with zero callers** across 16 types:
 
 | File | LOC | Why it is unreferenced |
 | --- | --- | --- |
@@ -47,14 +47,36 @@ for a reference outside its own file, Hilt- and manifest-wired types excluded by
 | `VoiceShareController.kt` | 68 | "Voice share" — no caller. |
 | `LibreDropLlmInterface.kt` | 58 | "AI file descriptions" — no caller. |
 | `FileMetadataTranslator.kt` | 55 | "Multilingual metadata" — no caller. |
+| `ShareConfirmationTts.kt` | 49 | Spoken share confirmation; sibling of the trio above. |
+| `discovery/medium/BadaMediumRegistries.kt` | 35 | Registry builder; the live path uses `MediumRegistries` directly. |
+| `protocol/ProtocolInfo.kt` | 28 | Constant holder left from the multi-module layout this was ported from. |
+| `service/receiver/ReceiverBugReportDiagnostics.kt` | 23 | Bug-report attachment helper; no reporting UI. |
+| `service/ServiceModuleInfo.kt` | 15 | Module-name constant, same porting residue. |
 
 This is kept, not deleted: each file implements a documented future path, and removing it would
 throw away the work the unwired features need. The point of listing it is that the size is now
 known rather than assumed.
 
-The same audit found two orphans outside LibreDrop — `customtasks/common/SteadinessMonitor.kt`
-(76 LOC) and `common/AppError.kt` (66 LOC) — with zero references, no Hilt binding, and no manifest
-entry. They predate this work and are flagged here for a decision rather than removed unilaterally.
+Every entry above is zero-reference across `main/`, `test/` **and** `androidTest/`, and the list is
+now enforced: `DeadSurfaceGuardTest` re-derives it on every unit-test run and fails if any further
+production type becomes unreferenced. The last five rows were found by that test, not by the manual
+sweep that produced the first eleven — which is precisely why it exists.
+
+Outside LibreDrop the same sweep initially reported two orphans. Widening it past `main/` corrected
+one of them:
+
+- `customtasks/common/SteadinessMonitor.kt` (76 LOC) — genuinely zero references in every source
+  set. A working sensor-based device-steadiness detector with no caller; it looks built for a
+  capture-stabilisation path that was never wired.
+- `common/AppError.kt` (66 LOC) — **not** an orphan. Zero production references, but two in
+  `JsonCodecMigrationTest`, and its partner type `common/Outcome.kt` has four live production uses.
+  This is a half-adopted abstraction (the result type landed and is used; the typed error hierarchy
+  landed and has not been taken up yet), not dead code. Deleting it would remove the destination of
+  an in-progress migration.
+
+Neither is removed here. `SteadinessMonitor` is functioning, deliberately-written code whose
+"integration" would mean inventing a capture feature; `AppError` is mid-migration. Both are listed
+so the choice is explicit rather than invisible.
 
 ## Architecture
 
@@ -174,6 +196,12 @@ sequenceDiagram
 | `ConsentIntentsTest` | Consent broadcast routing, including every case that must be dropped rather than actioned. |
 | `UriFileSourceTest`, `LibreDropSenderViewModelMappingTest` | Pre-existing: URI-backed payload sourcing and connection-state → UI-state mapping. |
 
+`LibreDropConsentActivityTest` covers the trampoline's defensive paths under Robolectric: a launch
+with no connection id, with the sentinel id, and for an already-terminated transfer must each
+finish without rendering and without leaking a `ConsentModalRegistry` entry. A consent card that
+does not match a live inbound connection is worse than none — accepting it would submit a decision
+into nothing while the user believes they authorised a transfer.
+
 `ReceiveModePreferencesTest` runs under Robolectric against a real Android `SharedPreferences`,
 asserting the privacy-relevant default (a fresh install is not discoverable) and the persistence
 round-trip the screen relies on when it re-asserts the user's choice after a process death.
@@ -208,15 +236,18 @@ The wiring was verified on an emulator (`system-images;android-35;default;arm64-
    and a remove control.
 3. The Send button label tracks state: "Select files and a device" → "Select a nearby device" →
    "Send to <peer>".
+4. `LibreDropConsentActivity` launches `LAUNCH_SINGLE_TOP` with `isTopActivityTransparent=true`, and
+   its stale-entry path (no live `ConsentRegistry` entry) logs and finishes cleanly, leaving 0
+   references in the activity stack and 0 fatal exceptions. Its *happy* path — a live entry with
+   Accept/Reject — needs a real peer and is not proven on-device yet.
 
 A second device on the same network is required to exercise an actual transfer end-to-end; the
 loopback test covers the protocol itself.
 
 ## Known gaps
 
-- `ReceiverForegroundService.consentTrampolineTarget` is left unset because no `:app` activity
-  handles `ConsentIntents.ACTION_SHOW_CONSENT`. Until one exists, the foreground-modal consent path
-  is skipped and the heads-up notification is the only consent surface.
+- The consent trampoline's *happy* path (a live `ConsentRegistry` entry) needs a real peer to
+  exercise; only the stale-entry path is proven on-device so far. See the verification note below.
 - The sender advertises only Wi-Fi LAN in `ConnectionRequestFrame.mediums`
   (`MediumRegistry.DefaultWifiLan`). Bandwidth upgrade to a faster medium is not negotiated.
 - `ReceiverForegroundService` (1,451 lines) and several protocol files exceed the repository's
