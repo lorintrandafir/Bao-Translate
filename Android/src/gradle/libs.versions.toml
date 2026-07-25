@@ -50,7 +50,7 @@ playServicesNearby = "19.3.0"
 commonsCompress = "1.28.0"
 mockitoKotlin = "6.3.0"
 kotest = "6.2.1"
-robolectric = "4.16"
+robolectric = "4.16.1"
 kotlinxCoroutines = "1.11.0"
 zxingCore = "3.5.4"
 
@@ -112,6 +112,12 @@ mlkit-genai-prompt = { group = "com.google.mlkit", name = "genai-prompt", versio
 mcp-kotlin-sdk = { group = "io.modelcontextprotocol", name = "kotlin-sdk", version.ref = "mcp" }
 ktor-client-android = { group = "io.ktor", name = "ktor-client-android", version.ref = "ktor" }
 ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
+# NOT CONSUMED — kept only to record the upstream coordinate this AAR corresponds to.
+# The build deliberately uses the vendored artifact: `implementation(files("libs/sherpa-onnx-v1.13.2.aar"))`.
+# Do not swap the `files(...)` dependency for `libs.sherpa.onnx`: the vendored AAR is the validated
+# build whose bundled .so set the packaging block pins (libsherpa-onnx-*.so, and the libonnxruntime.so
+# `pickFirsts` de-duplication against onnxruntime-android). Resolving this coordinate from Maven
+# instead would change the native payload without any compile-time signal.
 sherpa-onnx = { module = "com.k2fsa.sherpa:onnx", version.ref = "sherpaOnnx" }
 onnxruntime-android = { module = "com.microsoft.onnxruntime:onnxruntime-android", version.ref = "onnxruntimeAndroid" }
 vosk-android = { module = "com.alphacephei:vosk-android", version.ref = "vosk" }

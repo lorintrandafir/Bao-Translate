@@ -181,11 +181,16 @@ round-trip the screen relies on when it re-asserts the user's choice after a pro
 Two toolchain constraints came with adopting Robolectric, both handled in the build rather than
 worked around in tests:
 
-- Robolectric 4.16's bundled ASM cannot read Java 26 class files, so `tasks.withType<Test>` pins a
+- Robolectric 4.16.1's bundled ASM cannot read Java 26 class files, so `tasks.withType<Test>` pins a
   JDK 21 launcher. Compilation still uses the JDK 26 toolchain and production bytecode still
   targets Java 17, so nothing about what is tested changes.
 - Robolectric ships emulated frameworks up to SDK 36 while `targetSdk` is 37, so Robolectric tests
   carry an explicit `@Config(sdk = [36])` pin.
+
+The pin is 4.16.1, the latest stable. 4.17-beta-2 was tested against both constraints: it *does*
+accept `@Config(sdk = [37])`, but fails on JDK 21 **and** JDK 26 with
+`RuntimeException: Failed to interact with raw FileDescriptor internals; perhaps JRE has changed?`,
+so neither workaround can be dropped yet. Revisit at 4.17 stable.
 
 Still not covered: the foreground-service lifecycle (`ReceiverForegroundService` is 1,451 lines and
 drives real `BluetoothLeScanner` / `NsdManager` objects), BLE discovery, the Wi-Fi Direct and

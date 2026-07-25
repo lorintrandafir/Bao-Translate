@@ -199,15 +199,36 @@ class EndpointCodecTest {
     assertNull(EndpointInfo.parse(ByteArray(0)))
   }
 
-  /** Fuzz: random bytes must never crash the parser. This runs before any peer authentication. */
+  /**
+   * Fuzz: random bytes must never crash the parser, and anything it *does* return must be
+   * structurally valid. This path runs before any peer authentication, so a thrown exception is a
+   * remote DoS on the discovery loop and a malformed return value is a lie to every caller
+   * downstream.
+   *
+   * The structural assertions matter as much as the no-throw contract: without them this test
+   * would still pass if `parse` were replaced by a stub that returned `null` for everything.
+   */
   @Test
-  fun randomBytesNeverThrow() {
+  fun randomBytesNeverThrowAndAnyResultIsStructurallyValid() {
     val random = Random(20260725L)
+    var parsed = 0
     repeat(5_000) {
       val bytes = ByteArray(random.nextInt(96)).also(random::nextBytes)
-      // Any outcome is acceptable except an exception.
-      EndpointInfo.parse(bytes)
+      val info = EndpointInfo.parse(bytes)
+      if (info != null) {
+        parsed++
+        assertEquals("metadata width", EndpointInfo.METADATA_LEN, info.metadata.size)
+        assertTrue("version fits 3 bits", info.version in 0..EndpointInfo.MAX_VERSION)
+        // The hidden/name invariant the constructor enforces must also hold for parsed records.
+        if (info.hidden) {
+          assertNull("hidden peers must not carry a name", info.deviceName)
+        } else {
+          assertNotNull("visible peers must carry a name", info.deviceName)
+        }
+      }
     }
+    // Guards against the inverse stub: a parser that rejected everything would also never throw.
+    assertTrue("fuzz corpus must exercise the success path at least once, got $parsed", parsed > 0)
   }
 
   // -- Base64Url --

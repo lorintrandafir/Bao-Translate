@@ -287,6 +287,23 @@ Device gates, which need hardware or an emulator:
 ./gradlew :app:connectedDebugAndroidTest
 ```
 
+### Known false-green surfaces in the instrumentation suite
+
+The 105 `@Test` methods under `androidTest` are **not** as strict as the JVM suite. An audit of the
+real source found four places where a green run does not mean the behaviour was proven:
+
+| Test | Why a pass can be empty |
+| --- | --- |
+| `BaoTranslateLiveMicTranslationE2eTest.twoDevice_sendsTranscriptToLivePeerOverNearby` | `assumeTrue(peer != null)` — with one device attached the "two-device proof" reports success having proven nothing. |
+| `BaoTranslateLiveMicTranslationE2eTest.receivedPeerMessageWithoutEmbeddingDoesNotUseLocalVoice` | Same assumption; skips silently without a peer. |
+| `BaoTranslateBluetoothAudioRoutingTest.audioRouter_cleanup_idempotent` | No assertion — passes if `cleanup()` became a no-op. |
+| `BaoTranslateDeviceAudioRouteTest.audioRouter_play_thenReset_isSafe` | No assertion — same. |
+
+Read a green `connectedDebugAndroidTest` accordingly: the two-device Nearby path is only actually
+exercised when a second device is present and in Conversation Mode. The JVM suite has no equivalent
+gap — all 532 of its methods assert, none are `@Ignore`d, and its four `assume*` calls are
+filesystem-capability guards that did not fire on this machine (`skipped=0` in every run).
+
 Two hardening rules the suite enforces on itself, not just on production code:
 
 - `CrossCuttingHardeningTest.runBlockingWithTimeout_isRequired` statically scans the test tree and
@@ -305,7 +322,9 @@ harness.
 Robolectric itself is available (`ReceiveModePreferencesTest` uses it against a real
 `SharedPreferences`), with two toolchain caveats recorded in the build: its bundled ASM cannot read
 Java 26 class files, so `tasks.withType<Test>` pins a JDK 21 launcher; and it ships emulated
-frameworks only up to SDK 36, so Robolectric tests carry `@Config(sdk = [36])`.
+frameworks only up to SDK 36, so Robolectric tests carry `@Config(sdk = [36])`. The pin is
+4.16.1 (latest stable); 4.17-beta-2 accepts SDK 37 but fails on both JDK 21 and 26, so neither
+workaround can be dropped yet.
 
 Use a physical device for full translation, microphone capture, Bluetooth audio routing, voice cloning, and Nearby conversation validation. Emulator coverage is useful for compile, unit, and focused UI checks, but it does not replace hardware verification for the audio pipeline. A LibreDrop transfer between two real devices likewise cannot be proven by the loopback test alone, which exercises the protocol but not the radio.
 

@@ -74,11 +74,9 @@ internal fun ReceiveSection(
           modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
         )
       }
-      Switch(
-        checked = isReceiving,
-        onCheckedChange = onReceivingChanged,
-        modifier = Modifier.semantics { },
-      )
+      // No semantics override: Material3's Switch already exposes Role.Switch and announces its
+      // on/off state, and the live-region subtitle above carries the consequence in words.
+      Switch(checked = isReceiving, onCheckedChange = onReceivingChanged)
     }
   }
 }

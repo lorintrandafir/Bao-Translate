@@ -42,10 +42,11 @@ import org.robolectric.annotation.Config
  * file, and a fake would assert nothing about that.
  */
 @RunWith(RobolectricTestRunner::class)
-// The project targets SDK 37; Robolectric 4.16 ships emulated frameworks up to 36 and refuses to
+// The project targets SDK 37; Robolectric 4.16.1 ships emulated frameworks up to 36 and refuses to
 // configure a test whose targetSdkVersion exceeds that. Pinning the emulated level here is the
 // documented remedy. SharedPreferences semantics are unchanged between 36 and 37, so nothing this
-// test asserts depends on the difference — raise the pin when Robolectric ships SDK 37 support.
+// test asserts depends on the difference. 4.17-beta-2 DOES accept SDK 37, but fails on both JDK 21
+// and JDK 26 with "Failed to interact with raw FileDescriptor internals" — revisit at 4.17 stable.
 @Config(sdk = [36])
 @Category(Strict::class)
 class ReceiveModePreferencesTest {
