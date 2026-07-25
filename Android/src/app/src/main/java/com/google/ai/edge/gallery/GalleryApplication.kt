@@ -17,6 +17,7 @@
 package com.google.ai.edge.gallery
 
 import android.app.Application
+import com.google.ai.edge.gallery.customtasks.libredrop.service.receiver.ReceiverForegroundService
 import com.google.ai.edge.gallery.data.DataStoreRepository
 import com.google.ai.edge.gallery.notifications.NotificationScheduleManager
 import com.google.ai.edge.gallery.ui.theme.ThemeSettings
@@ -36,6 +37,17 @@ class GalleryApplication : Application() {
     super.onCreate()
     notificationScheduleManager.initialize()
     ThemeSettings.themeOverride.value = dataStoreRepository.readTheme()
+
+    // The LibreDrop receiver service lives in a package that must not statically depend on
+    // MainActivity, so it takes the tap target as a process-wide field. Without this the
+    // persistent receiver notification is untappable.
+    //
+    // consentTrampolineTarget is deliberately left unset: it must point at an Activity that
+    // handles ConsentIntents.ACTION_SHOW_CONSENT and renders the pending ConsentRegistry entry.
+    // MainActivity does not, and pointing it there would raise the app on every inbound request
+    // while showing nothing about it. With the field null the service falls back to the
+    // heads-up consent notification, whose Accept/Reject actions drive the same decision sink.
+    ReceiverForegroundService.openAppTarget = MainActivity::class.java
 
     if (BuildConfig.FIREBASE_CONFIGURED) {
       FirebaseApp.initializeApp(this)

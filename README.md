@@ -12,11 +12,16 @@
   <img alt="Version: 1.0.15" src="https://img.shields.io/badge/version-1.0.15-orange.svg" />
   <img alt="Languages: 12 targets" src="https://img.shields.io/badge/languages-12%20targets-success.svg" />
   <img alt="Runtime: LiteRT-LM, sherpa-onnx, ONNX Runtime" src="https://img.shields.io/badge/runtime-LiteRT--LM%20%7C%20sherpa--onnx%20%7C%20ONNX-4285F4.svg" />
+  <img alt="Unit tests: 532 passing" src="https://img.shields.io/badge/unit%20tests-532%20passing-success.svg" />
+  <img alt="Android Lint: clean" src="https://img.shields.io/badge/android%20lint-0%20errors-success.svg" />
+  <img alt="P2P: LibreDrop Quick Share" src="https://img.shields.io/badge/p2p-LibreDrop%20Quick%20Share-blueviolet.svg" />
 </p>
 
 ## ELI5
 
 Bao Translate is a tiny interpreter that runs on your Android phone. You speak, it captions and translates the words, then it speaks the translation out loud. If you enroll a short local voice profile, translated speech can be converted toward your timbre. After the model stack is downloaded, conversation audio and voice profiles stay on the device.
+
+It also carries **LibreDrop**: two phones on the same Wi-Fi can send each other files directly. One phone announces itself on the network, the other finds it, they do a secret handshake, both screens show the same 4-digit number so you can check you're talking to the right phone, and then the file goes across. Nothing touches a server.
 
 ## What It Does
 
@@ -27,6 +32,7 @@ Bao Translate is a tiny interpreter that runs on your Android phone. You speak, 
 - **Voice cloning:** OpenVoice ONNX tone conversion is provisioned with the required stack and is applied when a local or peer voice profile is available.
 - **Conversation modes:** face-to-face use, continuous translation, per-speaker language selection, Bluetooth audio routing, and Nearby Connections relay between Android devices.
 - **Model management:** downloads are curated, status-tracked, resumable, integrity-checked, and visible in the app.
+- **LibreDrop peer-to-peer transfer:** a from-scratch implementation of the Quick Share wire protocol (UKEY2 handshake, D2D key derivation, SecureMessage channel, chunked payloads) with send and receive over Wi-Fi LAN. See [docs/LIBREDROP.md](docs/LIBREDROP.md) for the protocol, security properties, and the parts that are not wired yet.
 
 ## How It Works
 
@@ -92,6 +98,40 @@ sequenceDiagram
 ```
 
 Nearby Connections is used for the two-device mesh. Each side can keep its own source and target language, and peer timbre metadata lets the receiving device speak the translation in the other speaker's voice profile when available.
+
+## LibreDrop File Transfer
+
+LibreDrop speaks the Quick Share wire protocol directly — the transfer itself does not go through Google Play Services. Receiving runs in a `connectedDevice` foreground service so the device stays reachable while the app is backgrounded; it is opt-in and off by default.
+
+```mermaid
+sequenceDiagram
+  participant S as Sender
+  participant R as Receiver
+  Note over R: "Receive files" ON → foreground service → TCP listener + mDNS advertise
+  S->>R: mDNS resolve, then TCP connect
+  S->>R: ConnectionRequest
+  S->>R: UKEY2 ClientInit
+  R->>S: UKEY2 ServerInit
+  S->>R: UKEY2 ClientFinished
+  Note over S,R: D2D keys derived (HKDF). Both compute the same 4-digit PIN.
+  S->>R: IntroductionFrame (names, sizes, payload ids)
+  Note over R: Consent notification — user taps Accept or Reject
+  R->>S: ConnectionResponseFrame{ACCEPT}
+  loop per 512 KiB chunk
+    S->>R: PayloadTransferFrame{DATA}
+  end
+  S->>R: LAST_CHUNK, then Disconnection
+```
+
+| Capability | State |
+| --- | --- |
+| Receive over Wi-Fi LAN | Working |
+| Send over Wi-Fi LAN | Working |
+| Wi-Fi Direct / hotspot / Bluetooth upgrade | Medium providers exist; the sender does not negotiate a bandwidth upgrade |
+| Consent surface | Heads-up notification actions; no in-app trampoline activity |
+| QR pairing, AI file descriptions, voice share | Code present, no UI entry point |
+
+Peer-supplied filenames are sanitized before they reach MediaStore or a `File` — separators, control characters, NUL, leading dots and `..` segments are all neutralised. Full detail, including known gaps, is in [docs/LIBREDROP.md](docs/LIBREDROP.md).
 
 ## Supported Languages
 
@@ -163,6 +203,8 @@ Build notes:
 - The wrapper uses Gradle 9.6.1 with AGP 9.4.0-alpha02 and Kotlin 2.4.20-Beta1.
 - Gradle toolchains use JDK 26 for compilation and emit Java 17 bytecode.
 - The vendored `sherpa-onnx` AAR lives under `Android/src/app/libs/`.
+- Verification task definitions are applied from `Android/src/gradle/verification.gradle.kts`; they are kept outside the module directory because Android Lint's build-script pass crashes when it tries to resolve an applied `.gradle.kts` that has no compilation classpath of its own.
+- `kotlinx-coroutines-test` is a test-only dependency pinned to the same version as `kotlinx-coroutines-core`; the two must match or the internal `TestCoroutineScheduler` wiring breaks at runtime.
 - `sherpa-onnx` and `onnxruntime-android` both ship `libonnxruntime.so`; packaging keeps one shared object with `jniLibs.pickFirsts`.
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for local setup, Hugging Face OAuth configuration, and verification notes.
@@ -184,6 +226,10 @@ flowchart TB
   feature --> translate["LiteRT-LM translation"]
   feature --> tts["Kokoro, Supertonic, platform TTS, OpenVoice"]
   feature --> nearby["Nearby conversation mesh"]
+  android --> libredrop["LibreDrop custom task"]
+  libredrop --> ldproto["protocol - UKEY2, SecureMessage, payloads"]
+  libredrop --> lddisc["discovery - mDNS, BLE, medium providers"]
+  libredrop --> ldsvc["service - receiver FGS, consent, downloads"]
 ```
 
 | Path | Purpose |
@@ -192,6 +238,7 @@ flowchart TB
 | [Android/src](Android/src) | App source, Gradle wrapper, tests, and resources |
 | [bao-translate/](bao-translate/) | Brand assets and app icon resources |
 | [docs/](docs/) | Architecture decisions and supporting documentation |
+| [docs/LIBREDROP.md](docs/LIBREDROP.md) | LibreDrop protocol, security properties, coverage, and known gaps |
 | [mcp/](mcp/) | Model Context Protocol integration guide |
 | [skills/](skills/) | Agent skill documentation and examples |
 | [model_allowlists/](model_allowlists/) and [model_allowlist.json](model_allowlist.json) | Curated model allowlists |
@@ -201,6 +248,7 @@ flowchart TB
 ## Documentation
 
 - [Android app guide](Android/README.md)
+- [LibreDrop protocol and status](docs/LIBREDROP.md)
 - [Development setup](DEVELOPMENT.md)
 - [Contribution policy](CONTRIBUTING.md)
 - [Bug reporting](Bug_Reporting_Guide.md)
@@ -211,16 +259,55 @@ flowchart TB
 
 ## Quality And Verification
 
-Recommended local gates before shipping Android changes:
+Current state of the JVM unit suite:
+
+| Metric | Value |
+| --- | --- |
+| Unit tests | 532 passing, 0 failing, 0 skipped, 42 classes |
+| Strict gate (`@Category(Strict)`) | 532 of 532 — the whole suite is gating |
+| LibreDrop tests | 149 |
+| Android Lint (debug) | 0 errors |
+
+The single gate that runs everything:
 
 ```bash
 cd Android/src
 ./gradlew :app:verifyReleaseReady
+```
+
+`verifyReleaseReady` covers `compileDebugKotlin`, `compileDebugAndroidTestKotlin`,
+`testDebugUnitTest`, `testDebugUnitTestStrict`, `lintDebug`, `assembleDebug`, and
+`assembleDebugAndroidTest`. The task definitions live in
+[gradle/verification.gradle.kts](Android/src/gradle/verification.gradle.kts).
+
+Device gates, which need hardware or an emulator:
+
+```bash
 ./gradlew :app:smokeE2e
 ./gradlew :app:connectedDebugAndroidTest
 ```
 
-Use a physical device for full translation, microphone capture, Bluetooth audio routing, voice cloning, and Nearby conversation validation. Emulator coverage is useful for compile, unit, and focused UI checks, but it does not replace hardware verification for the audio pipeline.
+Two hardening rules the suite enforces on itself, not just on production code:
+
+- `CrossCuttingHardeningTest.runBlockingWithTimeout_isRequired` statically scans the test tree and
+  fails if any `runBlocking` is not paired with a `withTimeout`, so a hung coroutine cannot masquerade
+  as a slow test.
+- `smokeE2e` parses the instrumentation output rather than trusting the exit code, because
+  `adb shell am instrument` returns 0 even when tests fail or the process crashes.
+
+### What is not covered
+
+Unit tests do not reach the LibreDrop foreground-service lifecycle (`ReceiverForegroundService`),
+BLE discovery, the Wi-Fi Direct / hotspot medium providers, or the notification builders. Those
+need instrumentation on a device, or a service refactor small enough to sit behind a Robolectric
+harness.
+
+Robolectric itself is available (`ReceiveModePreferencesTest` uses it against a real
+`SharedPreferences`), with two toolchain caveats recorded in the build: its bundled ASM cannot read
+Java 26 class files, so `tasks.withType<Test>` pins a JDK 21 launcher; and it ships emulated
+frameworks only up to SDK 36, so Robolectric tests carry `@Config(sdk = [36])`.
+
+Use a physical device for full translation, microphone capture, Bluetooth audio routing, voice cloning, and Nearby conversation validation. Emulator coverage is useful for compile, unit, and focused UI checks, but it does not replace hardware verification for the audio pipeline. A LibreDrop transfer between two real devices likewise cannot be proven by the loopback test alone, which exercises the protocol but not the radio.
 
 ## Built On
 

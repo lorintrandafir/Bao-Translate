@@ -124,7 +124,11 @@ constructor(
       responseMessage
         .onSuccess { msg ->
           val response = msg.toString()
-          BaoLog.d(TAG, "Done processing user instruction. Response: $response")
+          // Log the shape, never the content. BaoLog.d is NOT stripped in release (it dispatches
+          // straight to android.util.Log and the release build sets isMinifyEnabled = false), so
+          // interpolating the model response here would write user-derived text to logcat on
+          // shipped devices where any app holding READ_LOGS — or an adb-connected host — can read it.
+          BaoLog.d(TAG, "Done processing user instruction. Response length=${response.length}")
           onDone(response)
         }
         .onFailure { e ->

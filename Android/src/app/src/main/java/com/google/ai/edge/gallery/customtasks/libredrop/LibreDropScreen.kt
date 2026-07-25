@@ -1,8 +1,8 @@
 package com.google.ai.edge.gallery.customtasks.libredrop
 
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,11 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.Button
@@ -46,37 +43,13 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.Role
 import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.customtasks.common.CustomTaskData
 import com.google.ai.edge.gallery.customtasks.libredrop.discovery.DiscoveredService
+import com.google.ai.edge.gallery.customtasks.libredrop.service.receiver.ReceiverForegroundService
 import com.google.ai.edge.gallery.ui.theme.Dimensions
-
-data class DiscoveredPeer(
-  val name: String,
-  val endpointId: String,
-)
-
-data class SelectedFile(
-  val uri: Uri,
-  val name: String,
-  val sizeBytes: Long,
-)
-
-data class TransferStatus(
-  val peerName: String,
-  val fileName: String,
-  val progress: Float,
-  val state: TransferState,
-  val id: Long = 0L,
-  val failureReason: String? = null,
-)
-
-enum class TransferState {
-  CONNECTING, TRANSFERRING, COMPLETE, FAILED
-}
 
 @Composable
 fun LibreDropScreen(data: CustomTaskData) {
@@ -88,17 +61,56 @@ fun LibreDropScreen(data: CustomTaskData) {
   var selectedPeer by remember { mutableStateOf<DiscoveredService?>(null) }
   val context = androidx.compose.ui.platform.LocalContext.current
 
+  val receivePreferences = remember(context) { ReceiveModePreferences.from(context) }
+  var isReceiving by remember { mutableStateOf(receivePreferences.isEnabled()) }
+
+  // OpenMultipleDocuments, not OpenDocument: the protocol announces a multi-file introduction in
+  // a single connection, so staging files one modal at a time would be needless friction.
   val filePickerLauncher =
     androidx.activity.compose.rememberLauncherForActivityResult(
-      androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
-    ) { uri ->
-      if (uri != null) {
-        val meta = resolveFileMetadata(context, uri)
-        selectedFiles.add(
-          SelectedFile(uri = uri, name = meta.first, sizeBytes = meta.second)
-        )
+      androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+      for (uri in uris) {
+        // Persist read access across process death — the picker's implicit grant dies with the
+        // activity, and a large transfer can outlive it.
+        runCatching {
+          context.contentResolver.takePersistableUriPermission(
+            uri,
+            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+          )
+        }
+        if (selectedFiles.none { it.uri == uri }) {
+          val meta = resolveFileMetadata(context, uri)
+          selectedFiles.add(SelectedFile(uri = uri, name = meta.first, sizeBytes = meta.second))
+        }
       }
     }
+
+  val permissionLauncher =
+    androidx.activity.compose.rememberLauncherForActivityResult(
+      androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+      // The receiver degrades rather than fails on a denied optional permission (BLE discovery
+      // gets slower, the consent heads-up may be suppressed), so start regardless and let the
+      // service's own graceful-failure paths handle whatever was refused.
+      ReceiverForegroundService.start(context)
+      receivePreferences.setEnabled(true)
+      isReceiving = true
+    }
+
+  // Re-assert the user's persisted choice on entry. startForegroundService is idempotent for an
+  // already-running service, so this only has an effect when the platform killed the listener
+  // without restarting it — the toggle then reflects reality instead of a stale "on".
+  androidx.compose.runtime.LaunchedEffect(Unit) {
+    if (receivePreferences.isEnabled()) {
+      ReceiverForegroundService.start(context)
+    }
+  }
+
+  // Discovery holds an NsdManager browse; leaving the screen must release it.
+  androidx.compose.runtime.DisposableEffect(Unit) {
+    onDispose { senderViewModel.stopDiscovery() }
+  }
 
   val isSending = remember(transfers) {
     transfers.any { it.state == TransferState.CONNECTING || it.state == TransferState.TRANSFERRING }
@@ -106,9 +118,12 @@ fun LibreDropScreen(data: CustomTaskData) {
 
   Scaffold { padding ->
     Column(
+      // The screen now stacks five cards; on a short display the transfer log would otherwise be
+      // clipped with no way to reach it.
       modifier = Modifier
         .fillMaxSize()
         .padding(padding)
+        .verticalScroll(androidx.compose.foundation.rememberScrollState())
         .padding(Dimensions.Spacing.medium),
       verticalArrangement = Arrangement.spacedBy(Dimensions.Spacing.medium),
     ) {
@@ -123,9 +138,22 @@ fun LibreDropScreen(data: CustomTaskData) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
 
+      ReceiveSection(
+        isReceiving = isReceiving,
+        onReceivingChanged = { wantsReceiving ->
+          if (wantsReceiving) {
+            permissionLauncher.launch(receiverRuntimePermissions())
+          } else {
+            ReceiverForegroundService.stop(context)
+            receivePreferences.setEnabled(false)
+            isReceiving = false
+          }
+        },
+      )
+
       FilePickerSection(
         selectedFiles = selectedFiles,
-        onFileSelected = { filePickerLauncher.launch(arrayOf("*/*")) },
+        onPickFiles = { filePickerLauncher.launch(arrayOf("*/*")) },
         onFileRemoved = { file -> selectedFiles.remove(file) },
       )
 
@@ -182,65 +210,6 @@ fun LibreDropScreen(data: CustomTaskData) {
       }
 
       TransferStatusSection(transfers = transfers)
-    }
-  }
-}
-
-private fun com.google.ai.edge.gallery.customtasks.libredrop.discovery.DiscoveredService.toDisplayPeer(): DiscoveredPeer =
-  DiscoveredPeer(
-    name = endpointInfo?.let { ei ->
-      ei.deviceName?.takeIf { it.isNotBlank() }
-    } ?: instanceName.take(12),
-    endpointId = endpointId?.joinToString("") { "%02x".format(it) } ?: "",
-  )
-
-@Composable
-private fun FilePickerSection(
-  selectedFiles: List<SelectedFile>,
-  onFileSelected: (SelectedFile) -> Unit,
-  onFileRemoved: (SelectedFile) -> Unit,
-) {
-  Card(
-    modifier = Modifier.fillMaxWidth(),
-    colors = CardDefaults.cardColors(
-      containerColor = MaterialTheme.colorScheme.surfaceVariant,
-    ),
-  ) {
-    Column(modifier = Modifier.padding(Dimensions.Spacing.medium)) {
-      Text(
-        text = stringResource(R.string.libre_drop_files_to_share),
-        style = MaterialTheme.typography.titleSmall,
-      )
-      Spacer(modifier = Modifier.height(Dimensions.Spacing.small))
-      if (selectedFiles.isEmpty()) {
-        Text(
-          text = stringResource(R.string.libre_drop_no_files_selected),
-          style = MaterialTheme.typography.bodySmall,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-      } else {
-        selectedFiles.forEach { file ->
-          Row(
-            modifier = Modifier
-              .fillMaxWidth()
-              .padding(vertical = Dimensions.Spacing.xs),
-            horizontalArrangement = Arrangement.SpaceBetween,
-          ) {
-            Text(
-              text = file.name,
-              style = MaterialTheme.typography.bodyMedium,
-              maxLines = 1,
-              overflow = TextOverflow.Ellipsis,
-              modifier = Modifier.weight(1f),
-            )
-            Text(
-              text = formatFileSize(file.sizeBytes),
-              style = MaterialTheme.typography.bodySmall,
-              color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-          }
-        }
-      }
     }
   }
 }
@@ -335,8 +304,11 @@ private fun PeerDiscoverySection(
           color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
       } else {
-        LazyColumn {
-          items(peers) { peer ->
+        // A plain Column, not a LazyColumn: this card now sits inside a verticalScroll parent,
+        // and a lazy list of the same orientation there is given unbounded height constraints and
+        // throws. Nearby-peer lists are a handful of entries, so laziness buys nothing anyway.
+        Column {
+          peers.forEach { peer ->
             PeerListItem(
               peer = peer,
               isSelected = peer.name == selectedPeerName,
@@ -397,34 +369,3 @@ private fun PeerListItem(
 }
 
 
-private fun formatFileSize(bytes: Long): String {
-  return when {
-    bytes < 1024 -> "$bytes B"
-    bytes < 1024 * 1024 -> "${bytes / 1024} KB"
-    bytes < 1024 * 1024 * 1024 -> "${bytes / (1024 * 1024)} MB"
-    else -> "${bytes / (1024 * 1024 * 1024)} GB"
-  }
-}
-
-private fun resolveFileMetadata(
-  context: android.content.Context,
-  uri: android.net.Uri,
-): Pair<String, Long> {
-  var name: String? = null
-  var size = 0L
-  context.contentResolver.query(
-    uri,
-    arrayOf(android.provider.OpenableColumns.DISPLAY_NAME, android.provider.OpenableColumns.SIZE),
-    null,
-    null,
-    null,
-  )?.use { cursor ->
-    if (cursor.moveToFirst()) {
-      val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-      val sizeIdx = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
-      if (nameIdx >= 0) name = cursor.getString(nameIdx)
-      if (sizeIdx >= 0 && !cursor.isNull(sizeIdx)) size = cursor.getLong(sizeIdx)
-    }
-  }
-  return Pair(name ?: uri.lastPathSegment ?: "unnamed", size)
-}

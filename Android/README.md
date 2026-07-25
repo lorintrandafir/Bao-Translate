@@ -55,6 +55,8 @@ cd src
 
 # Toolchain: Gradle 9.6.1 + AGP 9.4.0-alpha02 + Kotlin 2.4.20-Beta1 + compileSdk 37.
 # Gradle toolchains use JDK 26 for compilation and emit Java 17 bytecode.
+# Unit tests EXECUTE on JDK 21: Robolectric's bundled ASM cannot read Java 26 class files.
+# See gradle/verification.gradle.kts.
 export PATH="$HOME/Library/Android/sdk/platform-tools:$PATH"
 
 ./gradlew :app:assembleDebug              # build the debug APK

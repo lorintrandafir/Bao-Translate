@@ -54,10 +54,37 @@ object BaoLog {
     method.invoke(null, normalize(tag), throwable)
   }
 
-  fun v(tag: String, message: String) { log("v", tag, message) }
-  fun v(tag: String, message: String, throwable: Throwable) { log("v", tag, message, throwable) }
-  fun d(tag: String, message: String) { log("d", tag, message) }
-  fun d(tag: String, message: String, throwable: Throwable) { log("d", tag, message, throwable) }
+  /**
+   * Whether a log at [level] may be emitted in a build where [debugBuild] describes
+   * `BuildConfig.DEBUG`.
+   *
+   * The verbose levels (`v`, `d`) are dropped in release builds. They are where diagnostic
+   * messages interpolate application values, and an audit of this tree found call sites writing a
+   * user's typed input history and a model's response text straight into them. Nothing strips
+   * those on the way out: this facade dispatches to `android.util.Log` unconditionally, and the
+   * release build sets `isMinifyEnabled = false`, so there is no R8 pass removing log calls
+   * either. The result shipped user-derived text to logcat, readable by any app holding
+   * `READ_LOGS` or by an adb-connected host.
+   *
+   * `i`, `w` and `e` are kept in release: they are the operational levels a field bug report
+   * needs, and they are expected to carry shapes and error codes rather than content.
+   *
+   * Pure and internal so the gate is unit-testable without needing to rebuild under a different
+   * variant — see `BaoLogTest`.
+   */
+  internal fun shouldEmit(level: String, debugBuild: Boolean): Boolean =
+    debugBuild || (level != "v" && level != "d")
+
+  private val debugBuild: Boolean get() = com.google.ai.edge.gallery.BuildConfig.DEBUG
+
+  fun v(tag: String, message: String) { if (shouldEmit("v", debugBuild)) log("v", tag, message) }
+  fun v(tag: String, message: String, throwable: Throwable) {
+    if (shouldEmit("v", debugBuild)) log("v", tag, message, throwable)
+  }
+  fun d(tag: String, message: String) { if (shouldEmit("d", debugBuild)) log("d", tag, message) }
+  fun d(tag: String, message: String, throwable: Throwable) {
+    if (shouldEmit("d", debugBuild)) log("d", tag, message, throwable)
+  }
   fun i(tag: String, message: String) { log("i", tag, message) }
   fun i(tag: String, message: String, throwable: Throwable) { log("i", tag, message, throwable) }
   fun w(tag: String, message: String) { log("w", tag, message) }

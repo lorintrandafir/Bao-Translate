@@ -30,3 +30,5 @@
 .cxx
 local.properties
 /app/src/main/assets/skills
+# Kotlin build-tools session markers written by the Gradle Kotlin compiler daemon.
+/.kotlin

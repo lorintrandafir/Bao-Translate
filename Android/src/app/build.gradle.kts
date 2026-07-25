@@ -140,6 +140,14 @@ android {
     compose = true
     buildConfig = true
   }
+  testOptions {
+    unitTests {
+      // Robolectric needs the merged resources/assets/manifest on the unit-test classpath to
+      // inflate a real Context. Without this, any @RunWith(RobolectricTestRunner) test fails at
+      // startup rather than running.
+      isIncludeAndroidResources = true
+    }
+  }
   packaging {
     jniLibs {
       // sherpa-onnx and onnxruntime-android both ship libonnxruntime.so. Keep one packaged copy.
@@ -242,6 +250,16 @@ dependencies {
   // kotest-property is used as a LIBRARY inside plain JUnit4 @Test methods (SttFilterPropertyTest);
   // no Kotest Spec/runner classes exist, so the runner artifact is deliberately absent.
   testImplementation(libs.kotest.property)
+  // Suspend-path coverage. Without this the LibreDrop connection drivers, sharing FSM loops and
+  // payload streaming had no way to be exercised from a JVM unit test at all.
+  testImplementation(libs.kotlinx.coroutines.test)
+  // Runs Android framework classes on the JVM so Context/SharedPreferences/Resources seams get
+  // coverage without an emulator. Two constraints come with it, both handled below/in-test:
+  //   1. Robolectric's bundled ASM cannot read Java 26 class files ("Unsupported class file major
+  //      version 70"), so the Test tasks run on a JDK 21 launcher (see `tasks.withType<Test>`).
+  //   2. It ships emulated frameworks only up to SDK 36 while targetSdk is 37, so Robolectric
+  //      tests carry an explicit @Config(sdk = [36]) pin.
+  testImplementation(libs.robolectric)
   androidTestImplementation(libs.androidx.junit)
   androidTestImplementation(libs.androidx.espresso.core)
   androidTestImplementation(libs.androidx.uiautomator)
@@ -273,47 +291,14 @@ dependencies {
   implementation(libs.zxing.core)
 }
 
-// CI verification gate. `:app:verifyReleaseReady` runs every guard the release
-// pipeline needs in a single invocation: typecheck, unit tests, Android Lint,
-// and the full debug APK assembly. Wired here per OSF-008 so a build rot
-// regression (cycles 1-5) cannot recur without a red CI run.
-tasks.register("verifyReleaseReady") {
-  group = "verification"
-  description = "Run typecheck + tests + lint + debug APK assembly in one gate."
-  dependsOn(
-    "compileDebugKotlin",
-    "compileDebugAndroidTestKotlin",
-    "testDebugUnitTest",
-    "lintDebug",
-    "assembleDebug",
-    "assembleDebugAndroidTest",
-  )
-}
-
-// Strict subset: runs only tests marked @Category(Strict.class). Promoted to the release
-// gate so newly hardened tests exercise production paths with no skips, optimistic markers, or
-// time-padding Thread.sleeps. Filters via the JUnit 4
-// categories mechanism — the @Category marker on each test class is what gates inclusion.
-tasks.register<Test>("testDebugUnitTestStrict") {
-  group = "verification"
-  description = "Run the @Category(Strict) subset of unit tests. Gating for release."
-  // Reuse the EXACT compiled classes + runtime classpath of the full debug unit-test task, so this
-  // runs the same bytecode — just filtered. Lazy files{} resolve at execution (order-independent);
-  // dependsOn guarantees the test classes are compiled first.
-  val full = tasks.named<Test>("testDebugUnitTest")
-  // Lazy files{} carry the producing-task dependencies (compile + resources), so this builds the
-  // test classes WITHOUT running the full suite — the strict gate must stand on its own.
-  testClassesDirs = files({ full.get().testClassesDirs })
-  classpath = files({ full.get().classpath })
-  dependsOn("compileDebugUnitTestKotlin", "processDebugUnitTestJavaRes")
-  // Real JUnit 4 category filtering: only classes/methods tagged @Category(Strict::class) run.
-  useJUnit { includeCategories("com.google.ai.edge.gallery.testkit.Strict") }
-}
-
-tasks.named("verifyReleaseReady") {
-  // Strict subset is gating; runs as part of the release gate alongside the full unit suite.
-  dependsOn("testDebugUnitTestStrict")
-}
+// Verification gates (verifyReleaseReady, testDebugUnitTestStrict) live in their own script so
+// this file stays focused on Android/Kotlin configuration.
+//
+// The script lives under ../gradle/ rather than in this module directory on purpose: Android
+// Lint's `checkBuildScripts` pass walks every *.gradle.kts inside the module and crashes in the
+// Kotlin analysis API when it tries to resolve an applied script that has no compilation
+// classpath of its own. Keeping it out of the module directory sidesteps that entirely.
+apply(from = "${rootProject.projectDir}/gradle/verification.gradle.kts")
 
 // Smoke subset: only SmokeE2eTest — not the full connectedDebugAndroidTest matrix (language
 // matrix, live mic, OpenVoice, etc. require models + minutes of runtime).
@@ -407,6 +392,5 @@ tasks.named("preBuild") {
   dependsOn("syncSkills")
 }
 
-tasks.withType<Test>().configureEach {
-  jvmArgs("-Dnet.bytebuddy.experimental=true")
-}
+// Test-task JVM configuration lives in gradle/verification.gradle.kts alongside the other
+// verification wiring.

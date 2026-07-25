@@ -22,6 +22,9 @@
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <!-- LibreDrop receiver runs as a connectedDevice foreground service so it stays
+         reachable to senders while the app is backgrounded. Required from API 34. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -129,6 +132,16 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+
+        <!-- LibreDrop inbound listener. `connectedDevice` is the foreground-service type
+             Android documents for peer-to-peer transfer over Wi-Fi/BLE; the service calls
+             ServiceCompat.startForeground with FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE and
+             would throw MissingForegroundServiceTypeException without this declaration.
+             Not exported: it is only ever started from in-app UI. -->
+        <service
+            android:name="com.google.ai.edge.gallery.customtasks.libredrop.service.receiver.ReceiverForegroundService"
+            android:foregroundServiceType="connectedDevice"
+            android:exported="false" />
 
         <receiver
             android:name="com.google.ai.edge.gallery.notifications.NotificationReceiver"

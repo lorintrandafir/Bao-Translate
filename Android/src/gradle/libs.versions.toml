@@ -50,6 +50,7 @@ playServicesNearby = "19.3.0"
 commonsCompress = "1.28.0"
 mockitoKotlin = "6.3.0"
 kotest = "6.2.1"
+robolectric = "4.16"
 kotlinxCoroutines = "1.11.0"
 zxingCore = "3.5.4"
 
@@ -118,8 +119,15 @@ play-services-nearby = { group = "com.google.android.gms", name = "play-services
 commons-compress = { group = "org.apache.commons", name = "commons-compress", version.ref = "commonsCompress" }
 mockito-kotlin = { group = "org.mockito.kotlin", name = "mockito-kotlin", version.ref = "mockitoKotlin" }
 kotest-property = { group = "io.kotest", name = "kotest-property", version.ref = "kotest" }
+# Test-only: runs Android framework classes (Context, SharedPreferences, Resources) on the JVM so
+# the Android-coupled seams get coverage without an emulator.
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }
+# Test-only: runTest / TestScope / UnconfinedTestDispatcher. Version-locked to the coroutines
+# runtime — kotlinx-coroutines-test must match kotlinx-coroutines-core exactly or the internal
+# TestCoroutineScheduler wiring breaks at runtime.
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxingCore" }
 
 [plugins]

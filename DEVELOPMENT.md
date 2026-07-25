@@ -42,6 +42,12 @@ export PATH="$HOME/Library/Android/sdk/platform-tools:$PATH"
 Gradle toolchain discovery is pinned to JDK 26 in `Android/src/gradle.properties`. If your shell
 resolves another JDK first, Gradle may fail before compilation starts.
 
+Unit tests *execute* on JDK 21 even though compilation uses JDK 26. Robolectric's bundled ASM
+rejects Java 26 class files ("Unsupported class file major version 70"), so
+`Android/src/gradle/verification.gradle.kts` pins a JDK 21 launcher on every `Test` task.
+Production bytecode targets Java 17, so this changes nothing about what is tested. Gradle needs a
+JDK 21 to be discoverable — the JBR bundled with Android Studio is one.
+
 ## Common Commands
 
 ```bash

@@ -31,7 +31,9 @@ class LibreDropTask @Inject constructor() : CustomTask {
       shortDescription = "",
       shortDescriptionRes = R.string.libre_drop_task_short_description,
       models = mutableListOf(),
-      modelCountOverride = 2,
+      // No modelCountOverride: LibreDrop ships no models, and overriding the count made the home
+      // card advertise "2 models" for a task whose model list is empty and whose screen never
+      // opens a model picker.
     )
 
   override fun initializeModelFn(
