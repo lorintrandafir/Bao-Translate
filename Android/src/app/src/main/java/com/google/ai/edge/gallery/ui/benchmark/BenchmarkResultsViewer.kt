@@ -78,6 +78,8 @@ import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.ui.common.MarkdownText
 import com.google.ai.edge.gallery.ui.common.SMALL_BUTTON_CONTENT_PADDING
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
+import com.google.ai.edge.gallery.ui.theme.Dimensions
+import com.google.ai.edge.gallery.ui.theme.customColors
 import java.text.SimpleDateFormat
 import java.util.Date
 import kotlinx.coroutines.delay
@@ -182,7 +184,7 @@ fun BenchmarkResultsViewer(
               )
             }
           } else {
-            Spacer(modifier = Modifier.size(48.dp))
+            Spacer(modifier = Modifier.size(Dimensions.Icon.xl))
           }
         },
         // The close button.
@@ -225,11 +227,11 @@ fun BenchmarkResultsViewer(
                 Modifier.fillMaxSize().padding(bottom = innerPadding.calculateBottomPadding()),
             ) {
               Column(
-                verticalArrangement = Arrangement.spacedBy(24.dp),
+                verticalArrangement = Arrangement.spacedBy(Dimensions.Spacing.large),
                 horizontalAlignment = Alignment.CenterHorizontally,
               ) {
                 // Progress spinner.
-                CircularProgressIndicator(strokeWidth = 4.dp, modifier = Modifier.size(36.dp))
+                CircularProgressIndicator(strokeWidth = Dimensions.Spacing.xs, modifier = Modifier.size(Dimensions.Component.shutterIconSize))
                 // Info text.
                 Text(
                   stringResource(R.string.running_benchmark_msg),
@@ -267,20 +269,20 @@ fun BenchmarkResultsViewer(
                     stringResource(R.string.benchmark_no_results),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(horizontal = 32.dp),
+                    modifier = Modifier.padding(horizontal = Dimensions.Spacing.xl),
                     textAlign = TextAlign.Center,
                   )
                 }
               } else {
                 // List.
-                LazyColumn(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                  item { Spacer(modifier = Modifier.height(16.dp)) }
+                LazyColumn(modifier = Modifier.fillMaxWidth().padding(horizontal = Dimensions.Spacing.medium)) {
+                  item { Spacer(modifier = Modifier.height(Dimensions.Spacing.medium)) }
                   if (filteredResults.size > 1) {
                     item {
                       Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(bottom = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(Dimensions.Spacing.small),
+                        modifier = Modifier.padding(bottom = Dimensions.Spacing.medium),
                       ) {
                         OutlinedButton(
                           onClick = { viewModel.expandAll() },
@@ -289,7 +291,7 @@ fun BenchmarkResultsViewer(
                           Icon(
                             Icons.Rounded.UnfoldMoreDouble,
                             contentDescription = null,
-                            modifier = Modifier.padding(end = 4.dp).size(16.dp),
+                            modifier = Modifier.padding(end = Dimensions.Spacing.xs).size(Dimensions.Icon.small),
                           )
                           Text(stringResource(R.string.expand_all))
                         }
@@ -300,7 +302,7 @@ fun BenchmarkResultsViewer(
                           Icon(
                             Icons.Rounded.UnfoldLessDouble,
                             contentDescription = null,
-                            modifier = Modifier.padding(end = 4.dp).size(16.dp),
+                            modifier = Modifier.padding(end = Dimensions.Spacing.xs).size(Dimensions.Icon.small),
                           )
                           Text(stringResource(R.string.collapse_all))
                         }
@@ -390,10 +392,10 @@ fun BenchmarkResultsViewer(
       sheetState = sheetState,
     ) {
       Column(
-        modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier.padding(horizontal = Dimensions.Spacing.medium).padding(bottom = Dimensions.Spacing.medium),
+        verticalArrangement = Arrangement.spacedBy(Dimensions.Spacing.medium),
       ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Dimensions.Spacing.small)) {
           Icon(Icons.AutoMirrored.Outlined.HelpOutline, contentDescription = null)
           Text(
             stringResource(R.string.benchmark_comparison_help_title),

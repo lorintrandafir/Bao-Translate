@@ -72,10 +72,6 @@ enum class ModelInitializationStatusType {
   ERROR,
 }
 
-// TokenStatus, TokenRequestResultType, TokenStatusAndData, TokenRequestResult moved to
-// ModelManagerTokenAuth.kt alongside getTokenStatusAndData(), getAuthorizationRequest(), and
-// handleAuthResult(). Re-imported here for backward compat at use sites.
-
 data class ModelManagerUiState(
   /** A list of tasks available in the application. */
   val tasks: List<Task>,

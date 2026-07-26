@@ -299,13 +299,13 @@ internal val captionController =
   internal fun isStaleRecordingSegment(recordingSessionId: Long?): Boolean =
     recordingSessionId != null && recordingSessionId != currentRecordingSessionId
 
-	  internal suspend fun processAudioSegment(
+  internal suspend fun processAudioSegment(
     audioSamples: ShortArray,
     recordingSessionId: Long? = null,
     preserveRecordingStatus: Boolean = false,
     reportEmptySpeech: Boolean = true,
-	  ) {
-	    if (isStaleRecordingSegment(recordingSessionId)) return
+  ) {
+    if (isStaleRecordingSegment(recordingSessionId)) return
     conversationEvent { onProcessingStart() }
     try {
       runSegmentPipeline(audioSamples, recordingSessionId, preserveRecordingStatus, reportEmptySpeech)

@@ -27,6 +27,7 @@ internal const val ROUTE_BENCHMARK = "benchmark"
 internal const val ROUTE_MODEL_MANAGER = "model_manager"
 internal const val ROUTE_NOTIFICATIONS = "notifications"
 internal const val ROUTE_BAO_TRANSLATE = "bao_translate"
+internal const val ROUTE_LIBRE_DROP = "libre_drop"
 
 internal fun Model.supportsBenchmark(): Boolean = isLlm && runtimeType == RuntimeType.LITERT_LM
 

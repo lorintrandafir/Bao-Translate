@@ -108,6 +108,7 @@ import com.google.ai.edge.gallery.data.SAMPLE_RATE
 import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.ui.common.getTaskIconColor
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
+import com.google.ai.edge.gallery.ui.theme.Dimensions
 import com.google.ai.edge.gallery.ui.theme.bodyLargeNarrow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -290,16 +291,16 @@ fun MessageInputText(
       onRemoveAudioClip = { index -> pickedAudioClips = pickedAudioClips.filterIndexed { i, _ -> i != index } },
     )
 
-    Box(contentAlignment = Alignment.Center, modifier = Modifier.heightIn(min = 76.dp)) {
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.heightIn(min = Dimensions.Component.inputMinHeight)) {
       AnimatedContent(targetState = showAudioRecorder) { curShowAudioRecorder ->
         when (curShowAudioRecorder) {
           // Input
           false ->
             Column(
               modifier =
-                Modifier.padding(horizontal = 12.dp)
-                  .padding(vertical = 8.dp)
-                  .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp))
+                Modifier.padding(horizontal = Dimensions.Spacing.md)
+                  .padding(vertical = Dimensions.Spacing.small)
+                  .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(Dimensions.Spacing.medium))
             ) {
               // First row: text field for input.
               Row(
@@ -326,18 +327,18 @@ fun MessageInputText(
                   modifier = Modifier.weight(1f).semantics { contentDescription = cdPromptInput },
                   placeholder = { Text(stringResource(textFieldPlaceHolderRes)) },
                 )
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(Dimensions.Spacing.xs))
               }
 
               // Second row: buttons to add extra content, and the action button.
               Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).offset(y = (-8).dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Dimensions.Spacing.md).offset(y = -Dimensions.Spacing.small),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
               ) {
                 Row(
                   verticalAlignment = Alignment.CenterVertically,
-                  horizontalArrangement = Arrangement.spacedBy(4.dp),
+                  horizontalArrangement = Arrangement.spacedBy(Dimensions.Spacing.xs),
                 ) {
                   // A plus button to show a popup menu to add stuff to the chat.
                   val isImageLimitExceededForAiCore =
@@ -394,8 +395,9 @@ fun MessageInputText(
                     SkillsPickerButton(
                       count = skillCount,
                       enabled = !inProgress && !isResettingSession && !modelInitializing,
-                      onClick = onSkillsClicked,
-                    )
+                    ) {
+                      onSkillsClicked()
+                    }
                   }
 
                   // MCP.
@@ -403,9 +405,10 @@ fun MessageInputText(
                     SkillsPickerButton(
                       count = mcpCount,
                       enabled = !inProgress && !isResettingSession && !modelInitializing,
-                      onClick = onMcpClicked,
                       labelRes = R.string.mcp,
-                    )
+                    ) {
+                      onMcpClicked()
+                    }
                   }
                 }
 

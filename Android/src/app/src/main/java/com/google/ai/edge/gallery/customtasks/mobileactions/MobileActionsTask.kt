@@ -50,9 +50,12 @@ class MobileActionsTask @Inject constructor() : CustomTask {
   override val task =
     Task(
       id = BuiltInTaskId.LLM_MOBILE_ACTIONS,
-      label = "Mobile Actions",
-      description = "Perform various device actions through Function Gemma",
-      shortDescription = "Leverage device mobile actions",
+      label = "",
+      labelRes = R.string.mobile_actions_task_label,
+      description = "",
+      descriptionRes = R.string.mobile_actions_task_description,
+      shortDescription = "",
+      shortDescriptionRes = R.string.mobile_actions_task_short_description,
       docUrl = "https://github.com/google-ai-edge/LiteRT-LM/blob/main/kotlin/README.md",
       sourceCodeUrl =
         "https://github.com/google-ai-edge/gallery/blob/main/Android/src/app/src/main/java/com/google/ai/edge/gallery/customtasks/mobileactions",
@@ -80,7 +83,7 @@ class MobileActionsTask @Inject constructor() : CustomTask {
       supportImage = false,
       supportAudio = false,
       onDone = onDone,
-      systemInstruction = getSystemPrompt(),
+      systemInstruction = getSystemPrompt(context),
       tools = tools,
     )
   }
@@ -110,14 +113,14 @@ class MobileActionsTask @Inject constructor() : CustomTask {
   }
 }
 
-fun getSystemPrompt(): Contents {
+fun getSystemPrompt(context: Context): Contents {
   val now = LocalDateTime.now(ZoneId.systemDefault())
   val curDateTimeString = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"))
   val dayOfWeekString = now.format(DateTimeFormatter.ofPattern("EEEE"))
   return Contents.of(
     listOf(
-        "You are a model that can do function calling with the following functions",
-        "Current date and time given in YYYY-MM-DDTHH:MM:SS format: ${curDateTimeString}\nDay of week is $dayOfWeekString",
+        context.getString(R.string.mobile_actions_system_prompt_role),
+        context.getString(R.string.mobile_actions_system_prompt_datetime, curDateTimeString, dayOfWeekString),
       )
       .map { Content.Text(it) }
   )

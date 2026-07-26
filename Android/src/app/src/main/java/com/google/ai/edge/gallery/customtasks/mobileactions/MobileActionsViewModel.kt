@@ -43,6 +43,7 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -75,53 +76,53 @@ constructor(@ApplicationContext private val appContext: Context) : ViewModel() {
   private val _isResettingConversation = MutableStateFlow(false)
   private val isResettingConversation = _isResettingConversation.asStateFlow()
 
+  /** Owns the stock-camera capture lifecycle. See [CaptureCoordinator]. */
+  val captureCoordinator = CaptureCoordinator(appContext)
+
   fun reset() {
-    val unused = setFlashlight(context = appContext, isEnabled = false)
+    setFlashlight(context = appContext, isEnabled = false)
     setShowWelcomeMessage(showWelcomeMessage = true)
     setUserPrompt(prompt = "'")
     setModelResponse(response = "")
     setNoFunctionRecognized(value = false)
     clearFunctionCallDetails()
+    captureCoordinator.reset()
   }
 
   fun cleanUp() {
-    val unused = setFlashlight(context = appContext, isEnabled = false)
+    setFlashlight(context = appContext, isEnabled = false)
   }
 
   fun setShowWelcomeMessage(showWelcomeMessage: Boolean) {
-    _uiState.update { _uiState.value.copy(showWelcomeMessage = showWelcomeMessage) }
+    _uiState.update { it.copy(showWelcomeMessage = showWelcomeMessage) }
   }
 
   fun setProcessing(processing: Boolean) {
-    _uiState.update { _uiState.value.copy(processing = processing) }
+    _uiState.update { it.copy(processing = processing) }
   }
 
   fun setUserPrompt(prompt: String) {
-    _uiState.update { _uiState.value.copy(userPrompt = prompt) }
+    _uiState.update { it.copy(userPrompt = prompt) }
   }
 
   fun setModelResponse(response: String) {
-    _uiState.update { _uiState.value.copy(modelResponse = response) }
+    _uiState.update { it.copy(modelResponse = response) }
   }
 
   fun appendModelResponse(partialResponse: String) {
-    _uiState.update {
-      _uiState.value.copy(modelResponse = _uiState.value.modelResponse + partialResponse)
-    }
+    _uiState.update { it.copy(modelResponse = it.modelResponse + partialResponse) }
   }
 
   fun addFunctionCallDetails(details: String) {
-    val newDetails = _uiState.value.functionCallDetails.toMutableList()
-    newDetails.add(details)
-    _uiState.update { _uiState.value.copy(functionCallDetails = newDetails) }
+    _uiState.update { it.copy(functionCallDetails = it.functionCallDetails + details) }
   }
 
   fun clearFunctionCallDetails() {
-    _uiState.update { _uiState.value.copy(functionCallDetails = listOf()) }
+    _uiState.update { it.copy(functionCallDetails = listOf()) }
   }
 
   fun setNoFunctionRecognized(value: Boolean) {
-    _uiState.update { _uiState.value.copy(noFunctionRecognized = value) }
+    _uiState.update { it.copy(noFunctionRecognized = value) }
   }
 
   fun processUserPrompt(
@@ -141,23 +142,22 @@ constructor(@ApplicationContext private val appContext: Context) : ViewModel() {
       setProcessing(processing = true)
       setShowWelcomeMessage(showWelcomeMessage = false)
 
-      // Clean up.
       setModelResponse(response = "")
       setNoFunctionRecognized(value = false)
       clearFunctionCallDetails()
 
-      // Set user prompt.
       setUserPrompt(prompt = userPrompt)
 
-      // Wait until the conversation is NOT resetting.
-      BaoLog.d(TAG, "Waiting for any ongoing conversation reset to be done...")
+      BaoLog.d(TAG, "Waiting for active conversation reset to be done...")
       isResettingConversation.first { !it }
       BaoLog.d(TAG, "Done waiting. Start inference.")
 
-      // Run inference.
       val instance = model.instance as? LlmModelInstance
       if (instance == null) {
         BaoLog.w(TAG, "No LlmModelInstance available; aborting inference.")
+        setProcessing(processing = false)
+        onError(appContext.getString(R.string.unknown_error))
+        onProcessDone()
         return@launch
       }
       val conversation = instance.conversation
@@ -170,7 +170,7 @@ constructor(@ApplicationContext private val appContext: Context) : ViewModel() {
         .sendMessageAsync(Contents.of(contents))
         .catch {
           BaoLog.e(TAG, "Failed to run inference", it)
-          onError(it.message ?: "Unknown error")
+          onError(it.message ?: appContext.getString(R.string.unknown_error))
         }
         .onCompletion {
           setProcessing(processing = false)
@@ -190,7 +190,7 @@ constructor(@ApplicationContext private val appContext: Context) : ViewModel() {
       model = model,
       supportImage = false,
       supportAudio = false,
-      systemInstruction = getSystemPrompt(),
+      systemInstruction = getSystemPrompt(appContext),
       tools = tools,
     )
     _isResettingConversation.value = false
@@ -229,7 +229,7 @@ constructor(@ApplicationContext private val appContext: Context) : ViewModel() {
                 onError(error)
               }
             },
-            systemInstruction = getSystemPrompt(),
+            systemInstruction = getSystemPrompt(appContext),
             tools = tools,
           )
         },
@@ -239,13 +239,10 @@ constructor(@ApplicationContext private val appContext: Context) : ViewModel() {
 
   fun performAction(action: Action, context: Context): String {
     return when (action) {
-      // Flashlight on.
       is FlashlightOnAction -> setFlashlight(context = context, isEnabled = true)
 
-      // Flashlight off.
       is FlashlightOffAction -> setFlashlight(context = context, isEnabled = false)
 
-      // Create contact.
       is CreateContactAction ->
         createContact(
           context = context,
@@ -255,19 +252,17 @@ constructor(@ApplicationContext private val appContext: Context) : ViewModel() {
           email = action.email,
         )
 
-      // Send email.
       is SendEmailAction ->
         sendEmail(context = context, to = action.to, subject = action.subject, body = action.body)
 
-      // Show location on map.
       is ShowLocationOnMap -> showLocationOnMap(context = context, location = action.location)
 
-      // Open wifi settings.
       is OpenWifiSettingsAction -> openWifiSettings(context = context)
 
-      // Create calendar events.
       is CreateCalendarEventAction ->
         createCalendarEvent(context = context, datetime = action.datetime, title = action.title)
+
+      is CapturePhotoAction -> captureCoordinator.arm(action = action)
 
       else -> {
         BaoLog.w(TAG, "Unknown action type: ${action::class.simpleName}")
@@ -280,40 +275,31 @@ constructor(@ApplicationContext private val appContext: Context) : ViewModel() {
     val cameraManager: CameraManager =
       context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
 
-    // Assuming the device has a rear camera with a flash unit (usually camera ID '0')
-    var cameraId: String? = null
+    val cameraIds = cameraManager.cameraIdList
+    if (cameraIds.isEmpty()) {
+      BaoLog.e(TAG, "No cameras available for flashlight")
+      return context.getString(R.string.unknown_error)
+    }
 
-    runCatching {
-
-      // Find the ID of the camera that supports the flash unit
-      for (id in cameraManager.cameraIdList) {
+    val cameraId: String? = runCatching {
+      cameraIds.firstOrNull { id ->
         val characteristics = cameraManager.getCameraCharacteristics(id)
-        val isFlashAvailable =
-          characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) ?: false
-        if (isFlashAvailable) {
-          cameraId = id
-          break
-        }
+        characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) ?: false
       }
-    
-}.onFailure { e ->
+    }.onFailure { e ->
+      BaoLog.e(TAG, "Failed to enumerate cameras", e)
+      return context.getString(R.string.mobile_actions_error_no_camera)
+    }.getOrNull()
 
+    if (cameraId == null) {
+      BaoLog.w(TAG, "No camera with flash found")
+      return context.getString(R.string.mobile_actions_error_no_flash)
+    }
+
+    val result = runCatching { cameraManager.setTorchMode(cameraId, isEnabled) }
+    result.onFailure { e ->
       BaoLog.e(TAG, "Failed to set flashlight", e)
-      return e.message ?: context.getString(R.string.unknown_error)
-    
-}
-
-    cameraId?.let { id ->
-      runCatching {
-
-        cameraManager.setTorchMode(id, isEnabled)
-      
-}.onFailure { e ->
-
-        BaoLog.e(TAG, "Failed to set flashlight", e)
-        return e.message ?: context.getString(R.string.unknown_error)
-      
-}
+      return context.getString(R.string.mobile_actions_error_flashlight)
     }
 
     return ""
@@ -330,15 +316,12 @@ constructor(@ApplicationContext private val appContext: Context) : ViewModel() {
       Intent(ContactsContract.Intents.Insert.ACTION)
         .apply { type = ContactsContract.RawContacts.CONTENT_TYPE }
         .apply {
-          // Name
           putExtra(ContactsContract.Intents.Insert.NAME, "$firstName $lastName")
-          // Inserts an email address
           putExtra(ContactsContract.Intents.Insert.EMAIL, email)
           putExtra(
             ContactsContract.Intents.Insert.EMAIL_TYPE,
             ContactsContract.CommonDataKinds.Email.TYPE_WORK,
           )
-          // Inserts a phone number
           putExtra(ContactsContract.Intents.Insert.PHONE, phoneNumber)
           putExtra(
             ContactsContract.Intents.Insert.PHONE_TYPE,
@@ -346,113 +329,101 @@ constructor(@ApplicationContext private val appContext: Context) : ViewModel() {
           )
         }
 
-    runCatching {
-
-      context.startActivity(intent)
-    
-}.onFailure { e ->
-
-      BaoLog.e(TAG, "Failed to create contact", e)
-      return e.message ?: context.getString(R.string.unknown_error)
-    
-}
-
-    return ""
+    return launchIntentOrError(context, intent, "handle contact creation")
   }
 
   private fun sendEmail(context: Context, to: String, subject: String, body: String): String {
     val intent =
       Intent(Intent.ACTION_SEND).apply {
-        data = "mailto:".toUri()
-        type = "text/plain"
+        setDataAndType("mailto:".toUri(), "text/plain")
         putExtra(Intent.EXTRA_EMAIL, arrayOf(to))
         putExtra(Intent.EXTRA_SUBJECT, subject)
         putExtra(Intent.EXTRA_TEXT, body)
       }
 
-    runCatching {
-
-      context.startActivity(intent)
-    
-}.onFailure { e ->
-
-      BaoLog.e(TAG, "Failed to send email", e)
-      return e.message ?: context.getString(R.string.unknown_error)
-    
-}
-
-    return ""
+    return launchIntentOrError(context, intent, "handle email sending")
   }
 
   private fun showLocationOnMap(context: Context, location: String): String {
     val encodedLocation = URLEncoder.encode(location, StandardCharsets.UTF_8.toString())
     val intent = Intent(Intent.ACTION_VIEW).apply { data = "geo:0,0?q=$encodedLocation".toUri() }
 
-    runCatching {
-
-      context.startActivity(intent)
-    
-}.onFailure { e ->
-
-      BaoLog.e(TAG, "Failed to show location on map", e)
-      return e.message ?: context.getString(R.string.unknown_error)
-    
-}
-
-    return ""
+    return launchIntentOrError(context, intent, "handle map display")
   }
 
   private fun openWifiSettings(context: Context): String {
     val intent = Intent(Settings.ACTION_WIFI_SETTINGS)
-    runCatching {
-
-      context.startActivity(intent)
-    
-}.onFailure { e ->
-
-      BaoLog.e(TAG, "Failed to open wifi settings", e)
-      return e.message ?: context.getString(R.string.unknown_error)
-    
-}
-
-    return ""
+    return launchIntentOrError(context, intent, "open wifi settings")
   }
 
   private fun createCalendarEvent(context: Context, datetime: String, title: String): String {
-    // Convert datetime string to ms.
-    var ms = System.currentTimeMillis()
-    runCatching {
-
-      val localDateTime = LocalDateTime.parse(datetime)
-      val systemDefaultZone = ZoneId.systemDefault()
-      val zonedDateTime = localDateTime.atZone(systemDefaultZone)
-      ms = zonedDateTime.toInstant().toEpochMilli()
-    
-}.onFailure { e ->
-
-      // Ignore parsing error.
-      BaoLog.w(TAG, "Failed to parse date time: '$datetime'", e)
-    
-}
+    val parsed = parseDateTime(datetime)
+      ?: return context.getString(R.string.mobile_actions_error_invalid_datetime)
+    val systemDefaultZone = ZoneId.systemDefault()
+    val ms = parsed.atZone(systemDefaultZone).toInstant().toEpochMilli()
 
     val intent =
       Intent(Intent.ACTION_INSERT).apply {
         data = CalendarContract.Events.CONTENT_URI
         putExtra(CalendarContract.Events.TITLE, title)
         putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, ms)
-        putExtra(CalendarContract.EXTRA_EVENT_END_TIME, ms + 3600000)
+        putExtra(CalendarContract.EXTRA_EVENT_END_TIME, ms + DEFAULT_EVENT_DURATION_MS)
       }
-    runCatching {
+    return launchIntentOrError(context, intent, "create calendar event")
+  }
 
-      context.startActivity(intent)
-    
-}.onFailure { e ->
-
-      BaoLog.e(TAG, "Failed to create calendar event", e)
-      return e.message ?: context.getString(R.string.unknown_error)
-    
+  companion object {
+    internal const val DEFAULT_EVENT_DURATION_MS = 3_600_000L
+  }
 }
 
-    return ""
+internal fun launchIntentOrError(context: Context, intent: Intent, actionName: String): String {
+  return launchIntentOrError(
+    isResolvable = intent.resolveActivity(context.packageManager) != null,
+    startActivity = { context.startActivity(intent) },
+    noActivityMessage = { context.getString(R.string.mobile_actions_error_no_activity) },
+    actionName = actionName,
+  )
+}
+
+internal fun launchIntentOrError(
+  isResolvable: Boolean,
+  startActivity: () -> Unit,
+  noActivityMessage: () -> String,
+  actionName: String,
+): String {
+  if (!isResolvable) {
+    BaoLog.e(TAG, "No activity to $actionName")
+    return noActivityMessage()
   }
+  startActivity()
+  return ""
+}
+
+private val ISO_DATETIME_PATTERN = Regex("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2})?")
+
+internal fun parseDateTime(datetime: String): LocalDateTime? {
+  if (!ISO_DATETIME_PATTERN.matches(datetime)) {
+    BaoLog.w(TAG, "Invalid date time format: '$datetime'")
+    return null
+  }
+  val parts = datetime.split("T")
+  val dateParts = parts[0].split("-")
+  val month = dateParts[1].toIntOrNull()
+  val day = dateParts[2].toIntOrNull()
+  if (month == null || month !in 1..12 || day == null || day !in 1..31) {
+    BaoLog.w(TAG, "Date component out of range: '$datetime'")
+    return null
+  }
+  val timeParts = parts[1].split(":")
+  val hour = timeParts[0].toIntOrNull()
+  val minute = timeParts[1].toIntOrNull()
+  val second = if (timeParts.size > 2) timeParts[2].toIntOrNull() else 0
+  if (hour !in 0..23 || minute !in 0..59 || second !in 0..59) {
+    BaoLog.w(TAG, "Time component out of range: '$datetime'")
+    return null
+  }
+  return runCatching { LocalDateTime.parse(datetime, DateTimeFormatter.ISO_LOCAL_DATE_TIME) }
+    .onFailure { BaoLog.w(TAG, "Invalid calendar date: '$datetime'") }
+    .getOrNull()
 }

@@ -1,0 +1,176 @@
+/*
+ * Copyright 2026 LibreDrop contributors.
+ *
+ * Licensed under the Apache License, Version 2.0.
+ */
+package com.google.ai.edge.gallery.customtasks.libredrop.service.downloads
+
+/**
+ * Path-traversal-safe sanitizer for peer-supplied file names.
+ *
+ * Quick Share's `PayloadHeader.file_name` is attacker-controlled bytes:
+ * a malicious or buggy peer can advertise a filename containing `/`,
+ * `\`, `..`, NUL, or control characters. Letting that string flow into
+ * a `MediaStore` insert (or a `File` constructor on the legacy fallback
+ * path) opens us up to writing outside the Downloads directory.
+ *
+ * This object is the single source of truth for cleaning that input
+ * before it touches a filesystem API. The sanitization rules — kept
+ * narrow on purpose — are:
+ *
+ *  1. Replace any path separator (`/` or `\`) with `_`. We do NOT split
+ *     on the separator and keep only the last segment, NearDrop-style;
+ *     replacing flattens `../../etc/passwd` to `.._.._etc_passwd`,
+ *     which preserves something a user can recognize while making the
+ *     name's parent directory unambiguously the Downloads root.
+ *  2. Replace NUL (`\u0000`) and ASCII control chars (< 0x20) with `_`.
+ *     These are illegal in MediaStore and on most filesystems; some
+ *     Linux filesystems silently truncate at NUL, which is dangerous.
+ *  3. Drop any leading `.` characters. A leading dot turns the file
+ *     into a hidden file on Unix-like systems and, more importantly,
+ *     a name that is exactly `.` or `..` would break path resolution
+ *     in legacy-storage callers. Stripping leading dots collapses
+ *     `..hidden` to `hidden`, `.` to the empty string, and so on.
+ *  4. Trim whitespace at both ends. `MediaStore` accepts surrounding
+ *     spaces but they confuse users when the name shows up in the
+ *     Downloads UI.
+ *  5. Fall back to a deterministic replacement when the cleaned
+ *     string is empty (peer sent `"."`, `""`, or all separators).
+ *     Default fallback is `"received_file"`; callers can override
+ *     via [sanitize]'s `fallback` parameter.
+ *
+ * The sanitizer does not touch the file extension — `MediaStore` infers
+ * MIME type from the filename, so we want `report.pdf` to keep its
+ * `.pdf`. Path-traversal protection is about separators, not extensions.
+ *
+ * Pure JVM, no Android imports — that lets us unit-test the rules with
+ * a plain JUnit runner before the Android wiring on top picks them up.
+ */
+internal object FilenameSanitizer {
+    /**
+     * Default replacement when the sanitized name would otherwise be
+     * empty. Chosen to be human-readable in the Downloads UI and
+     * extension-free so the platform's MIME inference doesn't pick a
+     * wrong type from a placeholder.
+     */
+    internal const val DEFAULT_FALLBACK: String = "received_file"
+
+    /**
+     * Sanitize a peer-supplied filename to a value safe to hand to
+     * `MediaStore.MediaColumns.DISPLAY_NAME` or to a `File` constructor.
+     *
+     * @param raw The peer-supplied filename. May be empty, may contain
+     *   path separators, may consist entirely of dots.
+     * @param fallback Replacement when [raw] sanitizes to the empty
+     *   string. Defaults to [DEFAULT_FALLBACK]. The fallback itself is
+     *   NOT re-sanitized — callers are responsible for passing a safe
+     *   value here.
+     * @return A non-empty filename containing no separators, no NUL, no
+     *   control characters, and no leading dots.
+     */
+    internal fun sanitize(
+        raw: String,
+        fallback: String = DEFAULT_FALLBACK,
+    ): String {
+        // Step 1+2: replace separators and control chars in a single pass.
+        // We allocate exactly once via map+joinToString — for a typical
+        // 50-byte filename this is faster than a regex.
+        val replaced =
+            raw
+                .map { ch ->
+                    when {
+                        ch == '/' || ch == '\\' -> '_'
+                        ch.code < ASCII_PRINTABLE_LOW -> '_'
+                        else -> ch
+                    }
+                }.joinToString("")
+
+        // Step 3: trim outside whitespace FIRST. Internal whitespace is kept (think
+        // "My Photo.jpg") — only the boundaries get cleaned.
+        //
+        // Order matters. Stripping dots before trimming leaves whitespace-separated dot runs
+        // intact: ". ." drops its first dot to " .", which then trims to ".". That output starts
+        // with a dot, is a traversal marker, and violates this function's own contract. Trimming
+        // up front removes the boundary whitespace that was hiding the trailing dot.
+        val trimmed = replaced.trim()
+
+        // Step 4: drop every leading dot AND any whitespace between leading dots, so a run like
+        // ". . ." collapses fully instead of leaving a bare "." behind. `dropWhile`
+        // short-circuits on the first character that is neither, so this stays O(leading-run).
+        val stripped = trimmed.dropWhile { it == '.' || it.isWhitespace() }
+
+        // Step 5: the strip can expose fresh boundary whitespace ("..  name" -> "name" already,
+        // but ".. name .." -> "name ..") — trim once more so the result has clean edges.
+        val cleaned = stripped.trim()
+
+        // Step 6: empty-after-clean fallback.
+        return cleaned.ifEmpty { fallback }
+    }
+
+    /**
+     * Sanitize a peer-supplied relative path (i.e. a `parent_folder`
+     * value from a `PayloadHeader`).
+     *
+     * `parent_folder` is the folder hierarchy a folder-share announces:
+     * a slash-delimited list of segments such as `Trip Photos/2025`.
+     * Like file names, the value is attacker-controlled and may contain
+     * `..`, NUL, control characters, or empty segments.
+     *
+     * The result is a list of safe segments ready to be joined back
+     * with `/` and appended to the user's chosen save root. The
+     * sanitizer:
+     *
+     *  1. Splits on `/` AND `\` so a peer that uses Windows-style
+     *     separators or a mix of both produces the same hierarchy as
+     *     a forward-slash-only sender.
+     *  2. Sanitizes every segment via [sanitize] so traversal markers,
+     *     control characters, and leading dots cannot survive.
+     *  3. Drops empty segments produced by leading / trailing /
+     *     consecutive separators (`/foo//bar/` becomes `[foo, bar]`).
+     *  4. Drops `.` and `..` segments outright. They are nominally
+     *     valid filesystem traversal markers, and even though every
+     *     environment we target rejects them downstream, removing
+     *     them at the sanitizer keeps the downstream contract honest:
+     *     "every segment is a real subdirectory name".
+     *
+     * Returns an empty list when [raw] is empty or fully strips down
+     * to nothing. Callers treat empty as "no parent folder, write
+     * directly under the save root".
+     *
+     * @param raw The peer-supplied `parent_folder` string. May be
+     *   empty, may contain mixed separators, may contain `..`.
+     * @return An ordered list of sanitized path segments, ready to be
+     *   appended to a save-root URI / `File`.
+     */
+    internal fun sanitizeRelativePath(raw: String): List<String> {
+        if (raw.isEmpty()) return emptyList()
+        // Split on both common separators so a mixed-style peer
+        // (rare, but seen on Windows-origin folder shares) flattens
+        // into the same hierarchy as the canonical forward-slash form.
+        return raw
+            .split('/', '\\')
+            // Skip empties up front: leading/trailing/consecutive
+            // separators produce empty segments that would otherwise
+            // sanitize to the fallback name and pollute the path.
+            .filter { it.isNotEmpty() }
+            // Defang traversal markers BEFORE running the per-segment
+            // sanitizer: `..` would otherwise sanitize through (the
+            // sanitizer only strips LEADING dots, so `..` collapses
+            // to the empty string and then to the fallback). Dropping
+            // them outright is the simpler, safer choice.
+            .filter { it != "." && it != ".." }
+            // Sanitize each segment as if it were a filename. The
+            // fallback name is intentionally NOT applied here; if a
+            // segment fully strips to empty (e.g. all dots), we
+            // simply drop it rather than producing a ghost
+            // "received_file" subdirectory in the user's hierarchy.
+            .map { sanitize(it, fallback = "") }
+            .filter { it.isNotEmpty() }
+    }
+
+    /**
+     * 0x20 (space) is the lowest printable ASCII codepoint. Anything
+     * strictly below it is a control character we want to scrub.
+     */
+    private const val ASCII_PRINTABLE_LOW: Int = 0x20
+}

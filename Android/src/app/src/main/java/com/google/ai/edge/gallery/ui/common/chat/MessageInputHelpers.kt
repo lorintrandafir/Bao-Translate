@@ -484,8 +484,8 @@ internal fun AddContentMenuButton(
 internal fun SkillsPickerButton(
   count: Int,
   enabled: Boolean,
-  onClick: () -> Unit,
   labelRes: Int = R.string.skills,
+  onClick: () -> Unit,
 ) {
   OutlinedButton(
     onClick = onClick,

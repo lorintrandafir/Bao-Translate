@@ -1,0 +1,136 @@
+/*
+ * Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.google.ai.edge.gallery.testkit
+
+import java.io.File
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.experimental.categories.Category
+
+/**
+ * Fails when a production type becomes unreferenced without being recorded.
+ *
+ * ### Why this exists
+ *
+ * An audit of this tree found ~2,800 lines of production Kotlin with no caller anywhere — a whole
+ * feature's worth of medium providers, bootstrap clients and "AI assistance" helpers that were
+ * shipped, documented in the task description, and never wired to anything. Nothing caught it,
+ * because nothing was looking: the compiler is happy to build code no one calls, and Android Lint's
+ * unused-symbol checks do not span source sets.
+ *
+ * That is the answer to "why didn't the tests catch it" for this class of defect, so this test is
+ * the fix. It is a *ratchet*, not a cleanup mandate: the known-dead set is listed in
+ * [KNOWN_UNREFERENCED] with the reason each entry is tolerated, and anything newly unreferenced
+ * fails until it is either wired up or consciously added to the list.
+ *
+ * ### Method
+ *
+ * For every `main/` source file that declares a top-level type matching its filename, search all
+ * three source sets for a reference outside the declaring file. Types reached by a mechanism other
+ * than a Kotlin reference are excluded up front:
+ *
+ *  - Hilt graph members (`@Module`, `@HiltAndroidApp`, `@AndroidEntryPoint`, `@HiltViewModel`) —
+ *    instantiated by generated code.
+ *  - Anything named in `AndroidManifest.xml` — instantiated by the platform.
+ *
+ * The scan is deliberately name-based rather than a real reference graph. It over-approximates
+ * "referenced" (a name mentioned in a comment counts), which is the safe direction: this test can
+ * miss dead code, but it will not fail on live code.
+ */
+@Category(Strict::class)
+class DeadSurfaceGuardTest {
+
+  @Test
+  fun noNewlyUnreferencedProductionTypes() {
+    val mainRoot = File("src/main/java")
+    assertTrue("expected to run from the :app module directory", mainRoot.isDirectory)
+
+    val manifest = File("src/main/AndroidManifest.xml").takeIf { it.isFile }?.readText().orEmpty()
+    val allSources =
+      listOf("src/main/java", "src/test/java", "src/androidTest/java")
+        .map(::File)
+        .filter { it.isDirectory }
+        .flatMap { it.walkTopDown().filter { f -> f.extension == "kt" } }
+        .associateWith { it.readText() }
+
+    val offenders = mutableListOf<String>()
+    for (file in mainRoot.walkTopDown().filter { it.extension == "kt" }) {
+      val name = file.nameWithoutExtension
+      val src = allSources[file] ?: file.readText()
+      if (!Regex("""(?m)^\s*(?:public |internal |private )?(?:data |sealed |abstract |open )?(?:class|object|interface)\s+$name\b""").containsMatchIn(src)) continue
+      if (FRAMEWORK_ANNOTATIONS.any { src.contains(it) }) continue
+      if (manifest.contains(name)) continue
+
+      val referenced =
+        allSources.any { (other, text) ->
+          other != file && Regex("""\b$name\b""").containsMatchIn(text)
+        }
+      if (!referenced && name !in KNOWN_UNREFERENCED) {
+        offenders += "${file.path} declares '$name' with no reference in any source set"
+      }
+    }
+
+    assertTrue(
+      "Newly unreferenced production types. Wire them up, delete them, or add them to " +
+        "KNOWN_UNREFERENCED with a reason:\n" + offenders.joinToString("\n"),
+      offenders.isEmpty(),
+    )
+  }
+
+  private companion object {
+    /** Types reached by generated code or by the platform rather than by a Kotlin reference. */
+    val FRAMEWORK_ANNOTATIONS =
+      listOf("@Module", "@HiltAndroidApp", "@AndroidEntryPoint", "@HiltViewModel", "@HiltWorker")
+
+    /**
+     * Production types with no caller, each tolerated for a stated reason. Documented in full in
+     * `docs/LIBREDROP.md`. Shrinking this list is progress; growing it should be a deliberate act.
+     */
+    val KNOWN_UNREFERENCED =
+      setOf(
+        // LibreDrop non-Wi-Fi-LAN bootstrap and medium paths. The sender advertises Wi-Fi LAN only
+        // and never negotiates a bandwidth upgrade, so the client halves have no caller. Their
+        // server counterparts are live.
+        "BleGattInitialControlClient",
+        "BleL2capInitialControlClient",
+        "BluetoothClassicBootstrapClient",
+        "BluetoothClassicBootstrapServer",
+        "BluetoothRfcommMediumProvider",
+        // Resume protocol frames — resume is not driven from either half yet.
+        "ResumeFrames",
+        // QR-bonded pairing has no UI entry point.
+        "QrUrl",
+        // Save-location picker UI was never built.
+        "SaveLocationDisplayName",
+        // The "AI assistance" trio the LibreDrop task description advertises but nothing calls.
+        "VoiceShareController",
+        "LibreDropLlmInterface",
+        "FileMetadataTranslator",
+        // Sensor-based steadiness detector, built for a capture-stabilisation path never wired.
+        "SteadinessMonitor",
+        // Spoken share confirmation, sibling of the unwired "AI assistance" trio.
+        "ShareConfirmationTts",
+        // Production medium-registry builder; the live path uses MediumRegistries directly and the
+        // sender never negotiates an upgrade, so this factory has no caller.
+        "BadaMediumRegistries",
+        // Constant holders left over from the multi-module layout this feature was ported from.
+        "ProtocolInfo",
+        "ServiceModuleInfo",
+        // Bug-report attachment helper for the receiver; no reporting UI calls it.
+        "ReceiverBugReportDiagnostics",
+      )
+  }
+}

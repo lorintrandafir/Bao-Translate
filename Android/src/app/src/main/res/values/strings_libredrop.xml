@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+ Copyright 2026 Bada contributors.
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+
+ Strings for the LibreDrop UI controls added when the send and receive paths were wired up.
+ A separate values file (aapt merges every file in res/values/) keeps the monolithic strings.xml
+ from growing further; new LibreDrop copy belongs here.
+-->
+<resources>
+    <!-- File staging controls. The picker had no affordance at all before these existed. -->
+    <string name="libre_drop_add_files">Add</string>
+    <!-- %1$s is the file name, e.g. "Remove holiday.jpg". Spoken by TalkBack on the remove icon. -->
+    <string name="libre_drop_remove_file">Remove %1$s</string>
+
+    <!-- Receive-mode card. Controls the inbound foreground-service listener. -->
+    <string name="libre_drop_receive_title">Receive files</string>
+    <string name="libre_drop_receive_on_subtitle">Visible to nearby devices</string>
+    <string name="libre_drop_receive_off_subtitle">Turn on to let nearby devices send you files</string>
+</resources>

@@ -22,16 +22,29 @@ import com.google.ai.edge.litertlm.ToolSet
 
 private const val TAG = "AGMATools"
 
+internal fun maskEmail(email: String): String {
+  val at = email.indexOf('@')
+  if (at <= 0) return "***"
+  val local = email.substring(0, at)
+  val domain = email.substring(at)
+  val masked = if (local.length <= 1) "***" else "${local[0]}***"
+  return "$masked$domain"
+}
+
+internal fun maskPhone(phone: String): String {
+  val digits = phone.filter { it.isDigit() }
+  if (digits.length < 4) return "***"
+  return "${digits.take(2)}***${digits.takeLast(2)}"
+}
+
 class MobileActionsTools(val onFunctionCalled: (Action) -> Unit) : ToolSet {
   /** Turns on flashlight. */
   @Tool(description = "Turns the flashlight on")
   fun turnOnFlashlight(): Map<String, String> {
     BaoLog.d(TAG, "turn on flashlight")
 
-    // Call the callback with the recognized action.
     onFunctionCalled(FlashlightOnAction())
 
-    // Return a response object to the model confirming the action.
     return mapOf("result" to "success")
   }
 
@@ -40,10 +53,8 @@ class MobileActionsTools(val onFunctionCalled: (Action) -> Unit) : ToolSet {
   fun turnOffFlashlight(): Map<String, String> {
     BaoLog.d(TAG, "turn off flashlight")
 
-    // Call the callback with the recognized action.
     onFunctionCalled(FlashlightOffAction())
 
-    // Return a response object to the model confirming the action.
     return mapOf("result" to "success")
   }
 
@@ -57,7 +68,7 @@ class MobileActionsTools(val onFunctionCalled: (Action) -> Unit) : ToolSet {
   ): Map<String, String> {
     BaoLog.d(
       TAG,
-      "create contact. First name: '$firstName', last name: '$lastName', phone number: '$phoneNumber', email: '$email'",
+      "create contact. phone='${maskPhone(phoneNumber)}', email='${maskEmail(email)}'",
     )
 
     onFunctionCalled(
@@ -85,7 +96,7 @@ class MobileActionsTools(val onFunctionCalled: (Action) -> Unit) : ToolSet {
     @ToolParam(description = "The subject of the email.") subject: String,
     @ToolParam(description = "The body of the email.") body: String,
   ): Map<String, String> {
-    BaoLog.d(TAG, "send email. To: '$to', subject: '$subject', body: '$body'")
+    BaoLog.d(TAG, "send email. to='${maskEmail(to)}', subject=[${subject.length} chars], body=[${body.length} chars]")
 
     onFunctionCalled(SendEmailAction(to = to, subject = subject, body = body))
 
@@ -101,7 +112,7 @@ class MobileActionsTools(val onFunctionCalled: (Action) -> Unit) : ToolSet {
     )
     location: String
   ): Map<String, String> {
-    BaoLog.d(TAG, "Show location on map. Location: '$location'")
+    BaoLog.d(TAG, "Show location on map. location=[${location.length} chars]")
 
     onFunctionCalled(ShowLocationOnMap(location = location))
 
@@ -125,10 +136,44 @@ class MobileActionsTools(val onFunctionCalled: (Action) -> Unit) : ToolSet {
     datetime: String,
     @ToolParam(description = "The title of the event.") title: String,
   ): Map<String, String> {
-    BaoLog.d(TAG, "Create calendar event. Datetime: '$datetime', title: '$title'")
+    BaoLog.d(TAG, "Create calendar event. datetime=[${datetime.length} chars], title=[${title.length} chars]")
 
     onFunctionCalled(CreateCalendarEventAction(datetime = datetime, title = title))
 
     return mapOf("result" to "success", "datetime" to datetime, "title" to title)
+  }
+
+  /**
+   * Captures a high-resolution photo using the device's stock camera app. On Samsung Galaxy S
+   * Ultra devices the user can select 12MP / 50MP / 200MP (and 24MP on S26 Ultra) modes directly
+   * in the camera UI; third-party Camera2 access is capped at the binned default so the stock
+   * camera is the only path to full sensor resolution.
+   */
+  @Tool(description = "Captures a high-resolution photo via the stock camera app.")
+  fun capturePhoto(
+    @ToolParam(
+      description =
+        "Desired resolution hint: \"12mp\", \"50mp\", \"200mp\", or \"auto\". The stock camera decides the actual output; on Samsung S Ultra the user picks the mode in-camera."
+    )
+    resolution: String,
+    @ToolParam(
+      description = "Lens/mode hint: \"main\", \"ultrawide\", \"tele\", or \"auto\"."
+    )
+    mode: String,
+  ): Map<String, String> {
+    BaoLog.d(
+      TAG,
+      "Capture photo. resolution='$resolution', mode='$mode'",
+    )
+
+    onFunctionCalled(
+      CapturePhotoAction(resolutionHint = resolution, mode = mode)
+    )
+
+    return mapOf(
+      "result" to "success",
+      "resolution" to resolution,
+      "mode" to mode,
+    )
   }
 }

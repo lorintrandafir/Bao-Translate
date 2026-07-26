@@ -91,7 +91,10 @@ internal suspend fun downloadFileWithProgressAttempt(
     BaoLog.i(HTTP_TAG, "Resuming download from $resumeFrom bytes")
   }
 
-  val usableSpace = parentDir?.usableSpace ?: targetFile.usableSpace
+  val usableSpace =
+    allocatableBytes(context, parentDir ?: targetFile).getOrElse { error ->
+      return@withContext Result.failure(error)
+    }
   val remainingBytes = (expectedSize - resumeFrom.coerceAtMost(expectedSize)).coerceAtLeast(0L)
   val minimumSpace = remainingBytes + reserveExtraBytes
   if (minimumSpace > 0 && usableSpace in 1 until minimumSpace) {
@@ -166,7 +169,7 @@ internal suspend fun downloadFileWithProgressAttempt(
 
     if (totalSize > 0 && downloaded < totalSize) {
       return@withContext Result.failure(
-        Exception(context.getString(R.string.bao_error_incomplete_download, downloaded, totalSize))
+        incompleteDownloadException(context, downloaded, totalSize)
       )
     }
 

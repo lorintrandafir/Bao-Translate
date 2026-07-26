@@ -69,8 +69,20 @@ data class Task(
    */
   val description: String,
 
+  /**
+   * Optional string resource id for the description. When set, consumers should resolve it via
+   * `stringResource` for the active configuration. Falls back to [description] when null.
+   */
+  @StringRes val descriptionRes: Int? = null,
+
   /** Shorter description (within 6 words) of the task. */
   val shortDescription: String = "",
+
+  /**
+   * Optional string resource id for the short description. When set, consumers should resolve it
+   * via `stringResource` for the active configuration. Falls back to [shortDescription] when null.
+   */
+  @StringRes val shortDescriptionRes: Int? = null,
 
   /**
    * (optional)
@@ -158,6 +170,7 @@ object BuiltInTaskId {
   const val MP_SCRAPBOOK = "mp_scrapbook"
   const val LLM_AGENT_CHAT = "llm_agent_chat"
   const val BAO_TRANSLATE = "bao_translate"
+  const val LIBRE_DROP = "libre_drop"
 }
 
 private val allLegacyTaskIds: MutableSet<String> =

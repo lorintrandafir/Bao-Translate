@@ -345,7 +345,7 @@ internal suspend fun BaoTranslateModelManager.downloadTranslationModel(
     val actualSize = targetFile.length()
     targetFile.delete()
     return@withContext Result.failure(
-      Exception(context.getString(R.string.bao_error_incomplete_download, actualSize, spec.sizeBytes))
+      incompleteDownloadException(context, actualSize, spec.sizeBytes)
     )
   }
 
@@ -385,7 +385,7 @@ internal suspend fun BaoTranslateModelManager.downloadOpenVoiceModels(
       val actual = target.length()
       target.delete()
       return@withContext Result.failure(
-        Exception(context.getString(R.string.bao_error_incomplete_download, actual, spec.sizeBytes))
+        incompleteDownloadException(context, actual, spec.sizeBytes)
       )
     }
     completedBytes += spec.sizeBytes

@@ -12,6 +12,30 @@ import org.junit.Test
 class BaoLogTest {
 
   @Test
+  fun `release builds drop the verbose levels that carry interpolated content`() {
+    // Regression pin for a privacy defect found by auditing this tree: call sites were writing a
+    // user's typed input history and a model's response text into BaoLog.d, which dispatched to
+    // android.util.Log unconditionally. Release sets isMinifyEnabled = false, so no R8 pass strips
+    // them either — the content shipped to logcat.
+    assertEquals(false, BaoLog.shouldEmit("v", debugBuild = false))
+    assertEquals(false, BaoLog.shouldEmit("d", debugBuild = false))
+  }
+
+  @Test
+  fun `release builds keep the operational levels a bug report needs`() {
+    assertEquals(true, BaoLog.shouldEmit("i", debugBuild = false))
+    assertEquals(true, BaoLog.shouldEmit("w", debugBuild = false))
+    assertEquals(true, BaoLog.shouldEmit("e", debugBuild = false))
+  }
+
+  @Test
+  fun `debug builds emit every level`() {
+    for (level in listOf("v", "d", "i", "w", "e")) {
+      assertEquals("level $level in debug", true, BaoLog.shouldEmit(level, debugBuild = true))
+    }
+  }
+
+  @Test
   fun `normalize keeps short tags unchanged`() {
     assertEquals("BaoTranslateVM", BaoLog.normalize("BaoTranslateVM"))
     assertEquals("A", BaoLog.normalize("A"))

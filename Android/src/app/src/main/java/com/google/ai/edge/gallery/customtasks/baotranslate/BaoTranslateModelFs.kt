@@ -1,8 +1,39 @@
 package com.google.ai.edge.gallery.customtasks.baotranslate
 
 import android.content.Context
+import android.os.storage.StorageManager
+import com.google.ai.edge.gallery.R
 import java.io.File
 import kotlin.coroutines.cancellation.CancellationException
+
+/**
+ * Builds the "incomplete download" failure. The message is a plural resource: the byte counts are
+ * quantities, and several supported locales inflect on them, so a single %d-formatted string would
+ * be ungrammatical in those languages.
+ */
+internal fun incompleteDownloadException(context: Context, actual: Long, expected: Long): Exception =
+  Exception(
+    context.resources.getQuantityString(
+      R.plurals.bao_error_incomplete_download,
+      quantityFor(actual),
+      actual,
+      expected,
+    ),
+  )
+
+/** Clamps a byte count into the Int range `getQuantityString` requires, without overflowing. */
+internal fun quantityFor(count: Long): Int = count.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+
+/**
+ * Free space the app may actually claim at [path], via StorageManager rather than [File.usableSpace].
+ * usableSpace ignores the reclaimable cache other apps hold, so it under-reports and aborts
+ * multi-GB model downloads that would in fact fit. Returns failure if the query throws.
+ */
+internal fun allocatableBytes(context: Context, path: File): Result<Long> =
+  runCatching {
+    val storageManager = context.getSystemService(StorageManager::class.java)
+    storageManager.getAllocatableBytes(storageManager.getUuidForPath(path))
+  }
 
 /**
  * Filesystem utilities + readiness-check helpers for BaoTranslate model files. These were

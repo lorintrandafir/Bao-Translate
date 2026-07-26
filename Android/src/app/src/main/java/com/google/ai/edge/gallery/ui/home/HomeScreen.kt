@@ -76,9 +76,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -95,6 +95,7 @@ import com.google.ai.edge.gallery.ui.common.rememberDelayedAnimationProgress
 import com.google.ai.edge.gallery.ui.common.tos.AppTosDialog
 import com.google.ai.edge.gallery.ui.common.tos.TosViewModel
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
+import com.google.ai.edge.gallery.ui.theme.Dimensions
 import com.google.ai.edge.gallery.ui.theme.customColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -192,7 +193,7 @@ fun HomeScreen(
       drawerState = drawerState,
       drawerContent = {
         ModalDrawerSheet {
-          Column(modifier = Modifier.padding(16.dp)) {
+          Column(modifier = Modifier.padding(Dimensions.Spacing.medium)) {
             Row(modifier = Modifier.fillMaxWidth()) {
               SquareDrawerItem(
                 label = stringResource(R.string.drawer_settings_label),
@@ -212,7 +213,7 @@ fun HomeScreen(
                       )
                   ),
               )
-              Spacer(modifier = Modifier.width(16.dp))
+              Spacer(modifier = Modifier.width(Dimensions.Spacing.medium))
               SquareDrawerItem(
                 label = stringResource(R.string.drawer_models_label),
                 description = stringResource(R.string.drawer_models_description),
@@ -235,7 +236,7 @@ fun HomeScreen(
                   ),
               )
             }
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(Dimensions.Spacing.medium))
             Row(modifier = Modifier.fillMaxWidth()) {
               SquareDrawerItem(
                 label = stringResource(R.string.drawer_notifications_label),
@@ -283,7 +284,7 @@ fun HomeScreen(
             modifier =
               Modifier.graphicsLayer {
                 alpha = progress
-                translationY = ((-16).dp * (1 - progress)).toPx()
+                translationY = (-Dimensions.Home.entranceOffset * (1 - progress)).toPx()
               }
           ) {
             GalleryTopAppBar(
@@ -319,24 +320,24 @@ fun HomeScreen(
               modifier = Modifier
                 .fillMaxWidth()
                 .padding(
-                  start = 16.dp,
-                  end = 16.dp,
-                  top = innerPadding.calculateTopPadding() + 8.dp
+                  start = Dimensions.Spacing.medium,
+                  end = Dimensions.Spacing.medium,
+                  top = innerPadding.calculateTopPadding() + Dimensions.Spacing.small
                 ),
               colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.errorContainer,
               ),
             ) {
               Row(
-                modifier = Modifier.padding(12.dp),
+                modifier = Modifier.padding(Dimensions.Spacing.md),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(Dimensions.Spacing.small),
               ) {
                 Icon(
                   Icons.Rounded.Error,
                   contentDescription = null,
                   tint = MaterialTheme.colorScheme.onErrorContainer,
-                  modifier = Modifier.size(20.dp),
+                  modifier = Modifier.size(Dimensions.Icon.medium),
                 )
                 Text(
                   text = stringResource(R.string.error_check_internet),
@@ -374,15 +375,18 @@ fun HomeScreen(
                     animationLabel = "bg star",
                   )
                 }
-              val configuration = LocalConfiguration.current
-              val screenWidth = configuration.screenWidthDp.dp
+              val screenWidth =
+                with(androidx.compose.ui.platform.LocalDensity.current) { androidx.compose.ui.platform.LocalWindowInfo.current.containerSize.width.toDp() }
               val targetWidth = screenWidth * 1.5f
               Image(
                 painter = painterResource(id = R.drawable.bg_star),
                 contentDescription = null,
                 modifier =
                   Modifier.requiredWidth(targetWidth)
-                    .blur(radius = 35.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
+                    .blur(
+                      radius = Dimensions.Home.backgroundStarBlur,
+                      edgeTreatment = BlurredEdgeTreatment.Unbounded,
+                    )
                     .offset(x = screenWidth * 0.25f, y = -screenWidth * 0.1f)
                     .graphicsLayer {
                       rotationZ = (1f - progress) * 40f
@@ -402,12 +406,16 @@ fun HomeScreen(
               Column(
                 modifier =
                   Modifier.padding(
-                      horizontal = if (gm4) 24.dp else 40.dp,
-                      vertical = if (gm4) 0.dp else 48.dp,
+                      horizontal =
+                        if (gm4) Dimensions.Spacing.large
+                        else Dimensions.Home.heroHorizontalPadding,
+                      vertical =
+                        if (gm4) 0.dp
+                        else Dimensions.Home.heroVerticalPadding,
                     )
-                    .padding(top = 24.dp, bottom = 16.dp)
+                    .padding(top = Dimensions.Spacing.large, bottom = Dimensions.Spacing.medium)
                     .semantics(mergeDescendants = true) {},
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(Dimensions.Spacing.small),
               ) {
                 if (gm4) {
                   AppTitleGm4(enableAnimation = enableAnimation)
@@ -454,7 +462,7 @@ fun HomeScreen(
                 grid = grid,
               )
 
-              Spacer(modifier = Modifier.height(innerPadding.calculateBottomPadding() + 10.dp))
+              Spacer(modifier = Modifier.height(innerPadding.calculateBottomPadding() + Dimensions.Spacing.smd))
             }
           }
 

@@ -20,34 +20,47 @@ import androidx.core.net.toUri
 import com.google.ai.edge.gallery.BuildConfig
 import net.openid.appauth.AuthorizationServiceConfiguration
 
+/** Central project configuration sourced from Gradle BuildConfig fields and runtime properties. */
 object ProjectConfig {
-  /** Custom URI scheme registered with `appAuthRedirectScheme` in build.gradle.kts.
-   *  Used for internal deep links and OAuth redirects — single source of truth. */
+  /**
+   * Custom URI scheme used for the app's own internal deep links. Must match `applicationId`.
+   * The OAuth redirect scheme is configurable separately as [redirectScheme].
+   */
   const val deepLinkScheme = "com.google.ai.edge.gallery"
 
   const val deepLinkModelPath = "$deepLinkScheme://model/"
 
   const val deepLinkGlobalModelManager = "$deepLinkScheme://global_model_manager"
 
-  // Hugging Face OAuth client ID and redirect URI — injected from gradle.properties via
-  // BuildConfig so credentials never live as literals in source. Defaults are placeholders
-  // that compile but fail at runtime; set real values via `bao.hfOauth*` gradle properties
-  // (in a gitignored local gradle.properties or CI secret) before a source build that needs
-  // model downloads. See DEVELOPMENT.md for HF OAuth app registration steps.
-  val clientId: String = BuildConfig.HF_OAUTH_CLIENT_ID
-  val redirectUri: String = BuildConfig.HF_OAUTH_REDIRECT_URI
-  val redirectScheme: String = BuildConfig.HF_OAUTH_REDIRECT_SCHEME
+  // Hugging Face OAuth credentials — injected via BuildConfig from the `huggingFace*` gradle
+  // properties or HUGGING_FACE_* environment variables, so they never live as literals in
+  // source. All default to blank; [isHuggingFaceOAuthConfigured] gates the sign-in flow off
+  // instead of failing at runtime. See DEVELOPMENT.md for HF OAuth app registration steps.
+  val clientId: String = BuildConfig.HUGGING_FACE_CLIENT_ID
 
-  // OAuth 2.0 Endpoints (Authorization + Token Exchange)
-  private const val authEndpoint = "https://huggingface.co/oauth/authorize"
-  private const val tokenEndpoint = "https://huggingface.co/oauth/token"
+  val redirectUri: String = BuildConfig.HUGGING_FACE_REDIRECT_URI
 
-  // OAuth service configuration (AppAuth library requires this)
-  val authServiceConfig =
-    AuthorizationServiceConfiguration(
-      authEndpoint.toUri(), // Authorization endpoint
-      tokenEndpoint.toUri(), // Token exchange endpoint
-    )
+  /** Scheme registered as `appAuthRedirectScheme` in build.gradle.kts; AppAuth intercepts it. */
+  val redirectScheme: String = BuildConfig.HUGGING_FACE_REDIRECT_SCHEME
+
+  private val authEndpoint: String = BuildConfig.HUGGING_FACE_AUTH_ENDPOINT
+
+  private val tokenEndpoint: String = BuildConfig.HUGGING_FACE_TOKEN_ENDPOINT
+
+  val isHuggingFaceOAuthConfigured: Boolean
+    get() =
+      clientId.isNotBlank() &&
+        redirectUri.isNotBlank() &&
+        authEndpoint.isNotBlank() &&
+        tokenEndpoint.isNotBlank()
+
+  val authServiceConfig: AuthorizationServiceConfiguration?
+    get() =
+      if (isHuggingFaceOAuthConfigured) {
+        AuthorizationServiceConfiguration(authEndpoint.toUri(), tokenEndpoint.toUri())
+      } else {
+        null
+      }
 
   /** Application version name from build config. Single source of truth for version display. */
   val versionName: String = BuildConfig.VERSION_NAME

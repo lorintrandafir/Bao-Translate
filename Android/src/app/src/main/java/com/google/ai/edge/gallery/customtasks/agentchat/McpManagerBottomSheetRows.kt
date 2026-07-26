@@ -82,6 +82,7 @@ import com.google.ai.edge.gallery.firebaseAnalytics
 import com.google.ai.edge.gallery.ui.common.ClickableLink
 import com.google.ai.edge.gallery.ui.common.SmallFilledTonalButton
 import com.google.ai.edge.gallery.ui.common.SmallOutlinedButton
+import com.google.ai.edge.gallery.ui.theme.Dimensions
 import com.google.ai.edge.gallery.ui.theme.customColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -100,14 +101,14 @@ internal fun EmptyMcpServerView(onAddClick: () -> Unit, onDismiss: () -> Unit) {
 
   Column(
     modifier =
-      Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp).fillMaxSize().pointerInput(
+      Modifier.padding(horizontal = Dimensions.Spacing.medium).padding(bottom = Dimensions.Spacing.medium).fillMaxSize().pointerInput(
         Unit
       ) {
         detectTapGestures(onTap = { focusManager.clearFocus() })
       }
   ) {
     Row(
-      modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+      modifier = Modifier.fillMaxWidth().padding(bottom = Dimensions.Spacing.small),
       horizontalArrangement = Arrangement.End,
       verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -121,14 +122,14 @@ internal fun EmptyMcpServerView(onAddClick: () -> Unit, onDismiss: () -> Unit) {
           onClick = onAddClick,
           colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
         ) {
-          Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-          Spacer(modifier = Modifier.width(4.dp))
+          Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(Dimensions.Component.iconSmall))
+          Spacer(modifier = Modifier.width(Dimensions.Spacing.xs))
           Text(stringResource(R.string.add_mcp_server))
         }
         ClickableLink(
           url = "https://github.com/google-ai-edge/gallery/tree/main/mcp",
           linkText = stringResource(R.string.learn_more_about_mcp),
-          modifier = Modifier.padding(top = 16.dp),
+          modifier = Modifier.padding(top = Dimensions.Spacing.medium),
         )
       }
     }
@@ -146,17 +147,17 @@ internal fun McpServerItemRow(
   Row(
     modifier =
       Modifier.fillMaxWidth()
-        .clip(shape = RoundedCornerShape(20.dp))
+        .clip(shape = RoundedCornerShape(Dimensions.Component.chipCornerRadius))
         .background(MaterialTheme.colorScheme.surfaceContainerLowest)
-        .padding(horizontal = 16.dp, vertical = 12.dp),
+        .padding(horizontal = Dimensions.Spacing.medium, vertical = Dimensions.Spacing.md),
     verticalAlignment = Alignment.CenterVertically,
   ) {
     Column(modifier = Modifier.weight(1f)) {
-      Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(Dimensions.Spacing.small)) {
         // Column to display server details like name, URL, and any error messages.
         Column(
-          modifier = Modifier.weight(1f).padding(top = 2.dp),
-          verticalArrangement = Arrangement.spacedBy(6.dp),
+          modifier = Modifier.weight(1f).padding(top = Dimensions.Spacing.xxs),
+          verticalArrangement = Arrangement.spacedBy(Dimensions.Spacing.sm),
         ) {
           val hasName = server.name.isNotEmpty()
           val primaryText = if (hasName) server.name else server.url
@@ -204,7 +205,7 @@ internal fun McpServerItemRow(
           onCheckedChange = onEnabledChange,
           enabled = serverState.error == null,
           modifier =
-            Modifier.offset(y = (-4).dp).semantics { contentDescription = toggleServerDesc },
+            Modifier.offset(y = -Dimensions.Spacing.xs).semantics { contentDescription = toggleServerDesc },
         )
       }
 
@@ -212,7 +213,7 @@ internal fun McpServerItemRow(
       Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Start,
-        modifier = Modifier.padding(top = 16.dp),
+        modifier = Modifier.padding(top = Dimensions.Spacing.medium),
       ) {
         val enabledToolsCount = server.toolsList.count { it.enabled }
         val totalToolsCount = server.toolsList.size
@@ -222,7 +223,7 @@ internal fun McpServerItemRow(
           imageVector = Icons.Outlined.Tune,
           enabled = serverState.error == null,
         )
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(Dimensions.Spacing.small))
         SmallOutlinedButton(
           onClick = onDeleteClick,
           labelResId = R.string.delete,

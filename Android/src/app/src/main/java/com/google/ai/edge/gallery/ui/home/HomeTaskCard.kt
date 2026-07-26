@@ -47,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -85,10 +86,7 @@ fun TaskCard(
       }
     }
   }
-  val modelCountLabel = when (modelCount) {
-    1 -> stringResource(R.string.model_count_single)
-    else -> stringResource(R.string.model_count_many, modelCount)
-  }
+  val modelCountLabel = pluralStringResource(R.plurals.model_count, modelCount, modelCount)
   var curModelCountLabel by remember { mutableStateOf("") }
   var modelCountLabelVisible by remember { mutableStateOf(true) }
 

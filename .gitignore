@@ -36,6 +36,17 @@ keystore.properties
 .tmp/
 .claude/
 .cursor/
+.kotlin/
+*.log
+*.hprof
+
+# Agent-loop state and scratch doc bundles pulled in beside the app; not project sources
+nes-bao-first-state.json
+llms-stack-refresh/
+
+# One-off device/emulator capture screenshots — attach to an issue, do not commit
+bluestacks_*.png
+screenshot_*.png
 
 # Skills are synced from skills/ via Gradle preBuild; do not commit the copy
 Android/src/app/src/main/assets/skills/

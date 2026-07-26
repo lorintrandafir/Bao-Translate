@@ -27,4 +27,17 @@
       <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_splash</item>
       <item name="postSplashScreenTheme">@style/Theme.Gallery</item>
   </style>
+  <!--
+    Translucent host for the LibreDrop consent trampoline. The activity draws its own scrim and
+    card, so the window itself must be floating and transparent — otherwise a full-screen opaque
+    surface would appear over whatever the user was doing before the consent card composes.
+    windowIsTranslucent + a transparent background keeps the underlying app visible behind it.
+  -->
+  <style name="Theme.Gallery.ConsentDialog" parent="android:Theme.Material.Light.NoActionBar">
+      <item name="android:windowIsTranslucent">true</item>
+      <item name="android:windowBackground">@android:color/transparent</item>
+      <item name="android:windowContentOverlay">@null</item>
+      <item name="android:windowIsFloating">false</item>
+      <item name="android:backgroundDimEnabled">true</item>
+  </style>
 </resources>

@@ -92,7 +92,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.google.ai.edge.gallery.R
-import com.google.ai.edge.gallery.common.safeAs
 import com.google.ai.edge.gallery.data.BooleanSwitchConfig
 import com.google.ai.edge.gallery.data.BottomSheetSelectorConfig
 import com.google.ai.edge.gallery.data.BottomSheetSelectorItem
@@ -103,6 +102,7 @@ import com.google.ai.edge.gallery.data.LabelConfig
 import com.google.ai.edge.gallery.data.NumberSliderConfig
 import com.google.ai.edge.gallery.data.SegmentedButtonConfig
 import com.google.ai.edge.gallery.data.ValueType
+import com.google.ai.edge.gallery.ui.theme.Dimensions
 import com.google.ai.edge.gallery.ui.theme.labelSmallNarrow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -157,15 +157,15 @@ fun ConfigDialog(
       shape = MaterialTheme.shapes.large,
     ) {
       Column(
-        modifier = Modifier.padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier.padding(Dimensions.Spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(Dimensions.Spacing.medium),
       ) {
         // Dialog title and subtitle.
         Column {
           Text(
             title,
             style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(bottom = 8.dp),
+            modifier = Modifier.padding(bottom = Dimensions.Spacing.small),
           )
           // Subtitle.
           if (subtitle.isNotEmpty()) {
@@ -173,7 +173,7 @@ fun ConfigDialog(
               subtitle,
               style = labelSmallNarrow,
               color = MaterialTheme.colorScheme.onSurfaceVariant,
-              modifier = Modifier.offset(y = (-6).dp),
+              modifier = Modifier.offset(y = -Dimensions.Spacing.sm),
             )
           }
         }
@@ -188,7 +188,7 @@ fun ConfigDialog(
                 text = {
                   Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(Dimensions.Spacing.xs),
                   ) {
                     val titleColor =
                       if (selectedTabIndex == index) MaterialTheme.colorScheme.primary
@@ -205,7 +205,7 @@ fun ConfigDialog(
           // List of config rows.
           Column(
             modifier = Modifier.verticalScroll(rememberScrollState()).weight(1f, fill = false),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(Dimensions.Spacing.medium),
           ) {
             ConfigEditorsPanel(configs = configs, values = values)
           }
@@ -218,7 +218,7 @@ fun ConfigDialog(
             placeholder = {
               Text(
                 text = stringResource(R.string.system_prompt_placeholder),
-                modifier = Modifier.offset(y = (4).dp), // Adjust to align the cursor with the text.
+                modifier = Modifier.offset(y = Dimensions.Spacing.xs), // Adjust to align the cursor with the text.
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
               )
@@ -235,7 +235,7 @@ fun ConfigDialog(
               Arrangement.End
             },
           verticalAlignment = Alignment.CenterVertically,
-          modifier = Modifier.padding(top = 8.dp),
+          modifier = Modifier.padding(top = Dimensions.Spacing.small),
         ) {
           // Restore default button to restore system prompt.
           if (showSystemPromptEditorTab && selectedTabIndex == 1) {

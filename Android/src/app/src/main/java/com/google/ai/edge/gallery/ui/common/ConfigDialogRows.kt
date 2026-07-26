@@ -17,7 +17,6 @@
 package com.google.ai.edge.gallery.ui.common
 
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,37 +26,27 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowDropDown
-import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.MultiChoiceSegmentedButtonRow
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -67,13 +56,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.google.ai.edge.gallery.R
-import com.google.ai.edge.gallery.common.safeAs
+import com.google.ai.edge.gallery.ui.theme.Dimensions
 import com.google.ai.edge.gallery.data.BooleanSwitchConfig
 import com.google.ai.edge.gallery.data.BottomSheetSelectorConfig
-import com.google.ai.edge.gallery.data.BottomSheetSelectorItem
 import com.google.ai.edge.gallery.data.Config
 import com.google.ai.edge.gallery.data.ConfigKeys
 import com.google.ai.edge.gallery.data.ConfigValue
@@ -81,8 +67,6 @@ import com.google.ai.edge.gallery.data.LabelConfig
 import com.google.ai.edge.gallery.data.NumberSliderConfig
 import com.google.ai.edge.gallery.data.SegmentedButtonConfig
 import com.google.ai.edge.gallery.data.ValueType
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 /** Composable function to display a list of config editor rows. */
 @Composable
@@ -125,10 +109,21 @@ fun LabelRow(config: LabelConfig, values: SnapshotStateMap<String, Any>) {
     // Field label.
     Text(config.key.label, style = MaterialTheme.typography.titleSmall)
     // Content label.
-    val label = values[config.key.label].safeAs("")
+    val label = values[config.key.label]?.toString().orEmpty()
     Text(label, style = MaterialTheme.typography.bodyMedium)
   }
 }
+
+/** Returns a numeric config value as a slider-ready float. */
+private fun numericConfigValue(value: Any?): Float =
+  when (value) {
+    is ConfigValue.FloatValue -> value.value
+    is ConfigValue.DoubleValue -> value.value.toFloat()
+    is ConfigValue.IntValue -> value.value.toFloat()
+    is Number -> value.toFloat()
+    is String -> value.toFloatOrNull() ?: 0f
+    else -> 0f
+  }
 
 fun getTextFieldDisplayValue(valueType: ValueType, value: Float): String {
   return runCatching {
@@ -176,15 +171,15 @@ fun NumberSliderRow(config: NumberSliderConfig, values: SnapshotStateMap<String,
       // while the user is editing.
       var textFieldDisplayValue by remember {
         mutableStateOf(
-          getTextFieldDisplayValue(config.valueType, values[config.key.label].safeAs(0f))
+          getTextFieldDisplayValue(config.valueType, numericConfigValue(values[config.key.label]))
         )
       }
 
       // Number slider.
-      val sliderValue = values[config.key.label].safeAs(0f)
+      val sliderValue = numericConfigValue(values[config.key.label])
 
       Slider(
-        modifier = Modifier.height(24.dp).weight(1f).padding(end = 8.dp),
+        modifier = Modifier.height(Dimensions.Icon.medium).weight(1f).padding(end = Dimensions.Spacing.small),
         value = sliderValue,
         valueRange = config.sliderMin..config.sliderMax,
         onValueChange = {
@@ -193,19 +188,19 @@ fun NumberSliderRow(config: NumberSliderConfig, values: SnapshotStateMap<String,
         },
       )
 
-      Spacer(modifier = Modifier.width(8.dp))
+      Spacer(modifier = Modifier.width(Dimensions.Spacing.small))
 
       // A smaller text field.
       BasicTextField(
         value = textFieldDisplayValue,
         modifier =
-          Modifier.width(80.dp).focusRequester(focusRequester).onFocusChanged {
+          Modifier.width(Dimensions.Component.imagePreviewHeight).focusRequester(focusRequester).onFocusChanged {
             isFocused = it.isFocused
 
             // When leaving focus, display the internal value so that any invalid value is cleared.
             if (!isFocused) {
               textFieldDisplayValue =
-                getTextFieldDisplayValue(config.valueType, values[config.key.label].safeAs(0f))
+                getTextFieldDisplayValue(config.valueType, numericConfigValue(values[config.key.label]))
             }
           },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -227,26 +222,26 @@ fun NumberSliderRow(config: NumberSliderConfig, values: SnapshotStateMap<String,
         Box(
           modifier =
             Modifier.border(
-              width = if (isFocused) 2.dp else 1.dp,
+              width = if (isFocused) Dimensions.Component.strokeWidth else Dimensions.Stroke.hairline,
               color =
                 if (isFocused) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.outline,
               shape = MaterialTheme.shapes.extraSmall,
             )
         ) {
-          Box(modifier = Modifier.padding(8.dp)) { innerTextField() }
+          Box(modifier = Modifier.padding(Dimensions.Spacing.small)) { innerTextField() }
         }
       }
     }
 
     if (config.key == ConfigKeys.MAX_TOKENS) {
-      val sliderValue = values[config.key.label].safeAs(0f)
+      val sliderValue = numericConfigValue(values[config.key.label])
       if (sliderValue >= 10000f) {
         Text(
           text = stringResource(R.string.max_tokens_warning_message),
           style = MaterialTheme.typography.bodySmall,
           color = MaterialTheme.colorScheme.error,
-          modifier = Modifier.padding(top = 8.dp),
+          modifier = Modifier.padding(top = Dimensions.Spacing.small),
         )
       }
     }
@@ -261,7 +256,7 @@ fun NumberSliderRow(config: NumberSliderConfig, values: SnapshotStateMap<String,
  */
 @Composable
 fun BooleanSwitchRow(config: BooleanSwitchConfig, values: SnapshotStateMap<String, Any>) {
-  val switchValue = values[config.key.label].safeAs(false)
+  val switchValue = values[config.key.label] == true
   Column(modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
     Text(config.key.label, style = MaterialTheme.typography.titleSmall)
     Switch(checked = switchValue, onCheckedChange = { values[config.key.label] = it })
@@ -276,7 +271,9 @@ fun BooleanSwitchRow(config: BooleanSwitchConfig, values: SnapshotStateMap<Strin
  */
 @Composable
 fun SegmentedButtonRow(config: SegmentedButtonConfig, values: SnapshotStateMap<String, Any>) {
-  val selectedOptions: List<String> = remember { values[config.key.label].safeAs("").split(",") }
+  val selectedOptions: List<String> = remember {
+    values[config.key.label]?.toString().orEmpty().split(",")
+  }
   var selectionStates: List<Boolean> by remember {
     mutableStateOf(
       List(config.options.size) { index -> selectedOptions.contains(config.options[index]) }
@@ -320,116 +317,3 @@ fun SegmentedButtonRow(config: SegmentedButtonConfig, values: SnapshotStateMap<S
   }
 }
 
-/**
- * Composable function to display a row with a bottom sheet selector.
- *
- * This function renders a row containing a label and a button, allowing users to select an option
- * from a bottom sheet.
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun BottomSheetSelectorRow(
-  config: BottomSheetSelectorConfig,
-  values: SnapshotStateMap<String, Any>,
-  showLabel: Boolean = true,
-  onSelected: (BottomSheetSelectorItem) -> Unit = {},
-) {
-  var selectedOption by remember {
-    mutableStateOf(
-      if (config.options.isEmpty()) {
-        null
-      } else {
-        config.options.find { it.label == (config.defaultValue as? ConfigValue.StringValue)?.value }
-      }
-    )
-  }
-  var showBottomSheet by remember { mutableStateOf(false) }
-  val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-  val scope = rememberCoroutineScope()
-
-  Column(
-    modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {},
-    verticalArrangement = Arrangement.spacedBy(4.dp),
-  ) {
-    if (showLabel) {
-      Text(config.key.label, style = MaterialTheme.typography.titleSmall)
-    }
-    Row(
-      horizontalArrangement = Arrangement.SpaceBetween,
-      verticalAlignment = Alignment.CenterVertically,
-      modifier =
-        Modifier.height(40.dp)
-          .clip(CircleShape)
-          .clickable { showBottomSheet = true }
-          .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
-          .padding(start = 12.dp, end = 8.dp),
-    ) {
-      Text(
-        selectedOption?.label ?: "-",
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.weight(1f),
-        maxLines = 1,
-        overflow = TextOverflow.MiddleEllipsis,
-      )
-      Icon(
-        Icons.Rounded.ArrowDropDown,
-        contentDescription = null,
-        tint = MaterialTheme.colorScheme.onSurface,
-      )
-    }
-  }
-
-  if (showBottomSheet) {
-    ModalBottomSheet(
-      onDismissRequest = { showBottomSheet = false },
-      sheetState = sheetState,
-      containerColor = MaterialTheme.colorScheme.surface,
-    ) {
-      Column(modifier = Modifier.fillMaxWidth()) {
-        val titleResId = config.bottomSheetTitleResId
-        if (titleResId != null) {
-          Text(
-            stringResource(titleResId),
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(16.dp),
-          )
-        }
-        LazyColumn {
-          items(config.options) { option ->
-            Row(
-              modifier =
-                Modifier.clickable {
-                    selectedOption = option
-                    values[config.key.label] = option.label
-                    onSelected(option)
-                    scope.launch {
-                      delay(200)
-                      sheetState.hide()
-                      showBottomSheet = false
-                    }
-                  }
-                  .padding(horizontal = 16.dp, vertical = 12.dp)
-                  .fillMaxWidth(),
-              verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-              Icon(
-                Icons.Rounded.CheckCircle,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.alpha(if (option == selectedOption) 1f else 0f),
-              )
-              Text(
-                option.label,
-                color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.labelLarge,
-              )
-            }
-          }
-        }
-      }
-    }
-  }
-}

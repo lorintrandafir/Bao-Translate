@@ -6,6 +6,7 @@ This guide covers the local setup required to build, install, and verify Bao Tra
 
 - Android Studio (or the Android SDK command-line tools) for platform tools and the SDK.
 - A system JDK 17 or newer on `PATH`. The Gradle toolchain auto-provisions JDK 26 via the bundled [foojay-resolver](https://github.com/foojay-io/tls-toolchain-resolver); system JDK 25 or 26 also satisfies the toolchain target when present.
+- A discoverable JDK 21 for the unit-test suite — see [Build Environment](#build-environment). The JBR bundled with Android Studio satisfies this.
 - Android SDK platform tools on `PATH` so `adb` resolves.
 - A `local.properties` file at `Android/src` that points at your SDK, for example:
   ```properties
@@ -16,10 +17,21 @@ This guide covers the local setup required to build, install, and verify Bao Tra
 
 ## Configure Hugging Face OAuth
 
-Model downloads require a Hugging Face OAuth application. Create one from the [Hugging Face OAuth documentation](https://huggingface.co/docs/hub/oauth#creating-an-oauth-app), then update the Android project:
+Gated model downloads require a Hugging Face OAuth application. Create one from the
+[Hugging Face OAuth documentation](https://huggingface.co/docs/hub/oauth#creating-an-oauth-app),
+then provide these Gradle properties or environment variables before building:
 
-1. In [ProjectConfig.kt](Android/src/app/src/main/java/com/google/ai/edge/gallery/common/ProjectConfig.kt), replace the sample `clientId` and `redirectUri` values with the values from your Hugging Face application.
-2. In [app/build.gradle.kts](Android/src/app/build.gradle.kts), set `manifestPlaceholders["appAuthRedirectScheme"]` to the redirect scheme configured for the same application.
+| Gradle property | Environment variable |
+| --- | --- |
+| `huggingFaceClientId` | `HUGGING_FACE_CLIENT_ID` |
+| `huggingFaceRedirectUri` | `HUGGING_FACE_REDIRECT_URI` |
+| `huggingFaceRedirectScheme` | `HUGGING_FACE_REDIRECT_SCHEME` |
+| `huggingFaceAuthEndpoint` | `HUGGING_FACE_AUTH_ENDPOINT` |
+| `huggingFaceTokenEndpoint` | `HUGGING_FACE_TOKEN_ENDPOINT` |
+
+The app denies the OAuth flow when any required value is missing. Do not edit
+[ProjectConfig.kt](Android/src/app/src/main/java/com/google/ai/edge/gallery/common/ProjectConfig.kt)
+with personal OAuth values.
 
 Keep personal client IDs and secrets out of commits.
 
@@ -35,6 +47,12 @@ export PATH="$ANDROID_HOME/platform-tools:$PATH"
 ```
 
 Setting `JAVA_HOME` is not required: the project's toolchain declaration pulls JDK 26 from a system install (Linux, macOS, Windows) or, as a last resort, downloads it via foojay-resolver.
+
+Unit tests *execute* on JDK 21 even though compilation uses JDK 26. Robolectric's bundled ASM
+rejects Java 26 class files ("Unsupported class file major version 70"), so
+`Android/src/gradle/verification.gradle.kts` pins a JDK 21 launcher on every `Test` task.
+Production bytecode targets Java 17, so this changes nothing about what is tested. Gradle needs a
+JDK 21 to be discoverable — the JBR bundled with Android Studio is one.
 
 ## Common Commands
 

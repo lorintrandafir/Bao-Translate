@@ -1,0 +1,162 @@
+/*
+ * Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.google.ai.edge.gallery.ui.common
+
+import com.google.ai.edge.gallery.testkit.Strict
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.experimental.categories.Category
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+/**
+ * Tests for the two pure security-relevant helpers in `ui/common`.
+ *
+ * `ui/common` is the largest untested package in the repository (~15k lines, previously zero unit
+ * tests). These two functions were picked first because both sit on a trust boundary:
+ *
+ *  - [isTrustedLocalWebViewUrl] decides whether a navigation target counts as app-owned content.
+ *    The WebView it guards runs with JavaScript enabled (`@SuppressLint("SetJavaScriptEnabled")`),
+ *    so a URL wrongly classified as trusted is script execution against app-origin content.
+ *  - [ensureValidFileName] sanitizes a display name before it is used as an imported model's file
+ *    name.
+ *
+ * Robolectric is required because both go through `androidx.core.net.toUri`, which is Android's
+ * `Uri` parser — and the parser's own edge behaviour (userinfo, case, ports) is exactly what is
+ * under test here, so substituting a fake would test nothing.
+ */
+@RunWith(RobolectricTestRunner::class)
+// See ReceiveModePreferencesTest for why the emulated SDK is pinned below targetSdk.
+@Config(sdk = [36])
+@Category(Strict::class)
+class WebViewTrustAndFileNameTest {
+
+  // -- WebView origin trust --
+
+  @Test
+  fun theAppAssetOriginIsTrusted() {
+    assertTrue(isTrustedLocalWebViewUrl("https://appassets.androidplatform.net"))
+    assertTrue(isTrustedLocalWebViewUrl("https://appassets.androidplatform.net/skills/index.html"))
+    assertTrue(isTrustedLocalWebViewUrl("https://appassets.androidplatform.net/a?b=c#d"))
+  }
+
+  /** Origin comparison is case-insensitive on scheme and host, per RFC 3986. */
+  @Test
+  fun schemeAndHostCasingDoesNotChangeTheVerdict() {
+    assertTrue(isTrustedLocalWebViewUrl("HTTPS://APPASSETS.ANDROIDPLATFORM.NET/x"))
+    assertTrue(isTrustedLocalWebViewUrl("HtTpS://AppAssets.AndroidPlatform.Net/x"))
+  }
+
+  /**
+   * The classic origin-confusion payload: everything before `@` is userinfo, so the real host is
+   * `evil.example`. A check that matched on prefix or substring would trust this.
+   */
+  @Test
+  fun userinfoSpoofingIsNotTrusted() {
+    assertFalse(isTrustedLocalWebViewUrl("https://appassets.androidplatform.net@evil.example/"))
+    assertFalse(isTrustedLocalWebViewUrl("https://appassets.androidplatform.net:pass@evil.example/"))
+  }
+
+  /** Subdomain and suffix look-alikes must not inherit trust. */
+  @Test
+  fun lookAlikeHostsAreNotTrusted() {
+    for (url in
+      listOf(
+        "https://evil.appassets.androidplatform.net/",
+        "https://appassets.androidplatform.net.evil.example/",
+        "https://appassets-androidplatform.net/",
+        "https://appassetsxandroidplatform.net/",
+      )) {
+      assertFalse("must not trust $url", isTrustedLocalWebViewUrl(url))
+    }
+  }
+
+  /** A different scheme or an explicit port is a different origin. */
+  @Test
+  fun schemeAndPortArePartOfTheOrigin() {
+    assertFalse(isTrustedLocalWebViewUrl("http://appassets.androidplatform.net/"))
+    assertFalse(isTrustedLocalWebViewUrl("https://appassets.androidplatform.net:8443/"))
+  }
+
+  /** Non-web schemes have no origin and must never be trusted. */
+  @Test
+  fun nonHttpSchemesAreNotTrusted() {
+    for (url in
+      listOf(
+        "javascript:alert(1)",
+        "data:text/html,<script>alert(1)</script>",
+        "file:///android_asset/index.html",
+        "content://com.example/doc",
+        "intent://appassets.androidplatform.net#Intent;scheme=https;end",
+        "",
+        "not a url",
+      )) {
+      assertFalse("must not trust '$url'", isTrustedLocalWebViewUrl(url))
+    }
+  }
+
+  // -- imported-model file names --
+
+  @Test
+  fun benignNamesSurviveUnchanged() {
+    for (name in listOf("model.task", "gemma-3n-E2B.litertlm", "a_b.bin", "v1.0.2-final.gguf")) {
+      assertEquals(name, ensureValidFileName(name))
+    }
+  }
+
+  @Test
+  fun pathSeparatorsAreReplacedSoNoTraversalSurvives() {
+    assertFalse(ensureValidFileName("../../etc/passwd").contains('/'))
+    assertFalse(ensureValidFileName("..\\..\\win\\system32").contains('\\'))
+    assertEquals(".._.._etc_passwd", ensureValidFileName("../../etc/passwd"))
+  }
+
+  @Test
+  fun spacesAndUnicodeAreReplaced() {
+    assertEquals("my_model.task", ensureValidFileName("my model.task"))
+    assertEquals("_____.bin", ensureValidFileName("日本語です.bin"))
+  }
+
+  @Test
+  fun outputContainsOnlyTheAllowedAlphabet() {
+    val hostile = "../..\\x\u0000y\u001B[2J z%$&*()!@#'\"`;|>.bin"
+    val out = ensureValidFileName(hostile)
+    assertTrue("unexpected characters in '$out'", out.all { it.isLetterOrDigit() || it in "._-" })
+  }
+
+  /**
+   * Known limitation, pinned deliberately rather than silently tolerated: unlike LibreDrop's
+   * `FilenameSanitizer`, this helper does not strip leading dots, so `".."` and `"."` survive
+   * intact and a leading-dot name still yields a hidden file.
+   *
+   * It is bounded rather than exploitable at the current call site — path separators *are*
+   * replaced, so no directory traversal is possible, and the only caller
+   * (`ModelImportDialog`) acts on a document the user picked themselves. If this function ever
+   * gains a caller that consumes a name from an untrusted source, it needs the leading-dot and
+   * empty-result handling that `FilenameSanitizer.sanitize` already implements.
+   */
+  @Test
+  fun documentedGap_leadingDotsAndTraversalMarkersAreNotStripped() {
+    assertEquals("..", ensureValidFileName(".."))
+    assertEquals(".", ensureValidFileName("."))
+    assertEquals(".hidden", ensureValidFileName(".hidden"))
+    // And an all-illegal name does not fall back to a placeholder, it becomes underscores.
+    assertEquals("___", ensureValidFileName("%$&"))
+  }
+}
