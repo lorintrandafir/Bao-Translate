@@ -17,40 +17,20 @@
 package com.google.ai.edge.gallery.customtasks.agentchat
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
-import android.provider.OpenableColumns
 import com.google.ai.edge.gallery.common.BaoLog
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Lightbulb
-import androidx.compose.material.icons.outlined.LocalLibrary
-import androidx.compose.material.icons.outlined.Map
-import androidx.compose.material.icons.outlined.Notifications
-import androidx.compose.material.icons.outlined.QrCode
-import androidx.compose.material.icons.outlined.SentimentVerySatisfied
-import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.ai.edge.gallery.GalleryEvent
 import com.google.ai.edge.gallery.common.LOCAL_URL_BASE
-import com.google.ai.edge.gallery.common.SkillTryOutChip
-import com.google.ai.edge.gallery.common.getJsonResponse
-import com.google.ai.edge.gallery.data.AllowedSkill
 import com.google.ai.edge.gallery.data.DataStoreRepository
-import com.google.ai.edge.gallery.data.SkillAllowlist
 import com.google.ai.edge.gallery.firebaseAnalytics
 import com.google.ai.edge.gallery.proto.Skill
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
-import java.io.InputStreamReader
-import java.net.URI
-import java.net.URL
 import javax.inject.Inject
-import kotlin.collections.joinToString
-import kotlin.io.encoding.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -59,79 +39,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private const val TAG = "AGSkillManagerVM"
-
-private const val SKILL_ALLOWLIST_URL = ""
-
-val TRYOUT_CHIPS: List<SkillTryOutChip> =
-  listOf(
-    SkillTryOutChip(
-      icon = Icons.Outlined.Map,
-      label = "Interactive Map",
-      prompt = "Show me Googleplex on interactive map.",
-      skillName = "interactive-map",
-    ),
-    SkillTryOutChip(
-      icon = Icons.Outlined.Notifications,
-      label = "Schedule Reminder",
-      prompt = "Set a daily reminder at 9am to check my schedule for today.",
-      skillName = "schedule-notification",
-    ),
-    SkillTryOutChip(
-      icon = Icons.Outlined.SentimentVerySatisfied,
-      label = "Track my mood",
-      prompt =
-        "Log yesterday's mood as 2 because it was raining quite heavily, and log today's mood as 9 because I had a great time playing pickleball again. Then show me my mood dashboard.",
-      skillName = "mood-tracker",
-    ),
-    SkillTryOutChip(
-      icon = Icons.Outlined.Lightbulb,
-      label = "Learn something new",
-      prompt = "I want to learn something new!",
-      skillName = "learn-something-new",
-    ),
-    SkillTryOutChip(
-      icon = Icons.Outlined.LocalLibrary,
-      label = "Query Wikipedia",
-      prompt = "Check Wikipedia about Oscars 2026. Tell me who won the best picture.",
-      skillName = "query-wikipedia",
-    ),
-    SkillTryOutChip(
-      icon = Icons.Outlined.QrCode,
-      label = "Generate QR code",
-      prompt = "Generate QR code for https://deepmind.google/models/gemma/",
-      skillName = "qr-code",
-    ),
-  )
-
-enum class SkillSource(val sourceName: String) {
-  BUILTIN("builtin"),
-  FEATURED("featured"),
-  REMOTE_URL("remote_url"),
-  LOCAL_IMPORT("local_import"),
-  UNKNOWN("unknown"),
-}
-
-enum class SkillAction(val value: String) {
-  ADD("add"),
-  DELETE("delete"),
-  ENABLE("enable"),
-  DISABLE("disable"),
-  ENABLE_ALL("enable_all"),
-  DISABLE_ALL("disable_all"),
-}
-
-data class SkillState(val skill: Skill)
-
-data class SkillManagerUiState(
-  val loading: Boolean = false,
-  val skills: List<SkillState> = listOf(),
-  val validating: Boolean = false,
-  val validationError: String? = null,
-  val importDirectoryUri: Uri? = null,
-  val loadingSkillAllowlist: Boolean = false,
-  val featuredSkills: List<AllowedSkill> = listOf(),
-  val skillAllowlistError: String? = null,
-)
 
 @HiltViewModel
 class SkillManagerViewModel
@@ -234,7 +141,7 @@ constructor(
               context.assets.open(skillMdPath).use { inputStream ->
                 val mdContent = inputStream.bufferedReader().use { it.readText() }
                 val (skillProto, errors) =
-                  convertSkillMdToProto(
+                  SkillParser.convertSkillMdToProto(
                     mdContent,
                     builtIn = true,
                     // Selection state will be reconciled with DataStore later
@@ -297,32 +204,27 @@ constructor(
   }
 
   private fun loadSkillAllowlist() {
+    if (SKILL_ALLOWLIST_URL.isEmpty()) {
+      BaoLog.d(TAG, "Skill allowlist URL is empty; remote featured-skills list disabled.")
+      _uiState.update {
+        it.copy(loadingSkillAllowlist = false, featuredSkills = emptyList())
+      }
+      return
+    }
     _uiState.update { it.copy(loadingSkillAllowlist = true, skillAllowlistError = null) }
     viewModelScope.launch(Dispatchers.IO) {
-      runCatching {
-        val url = SKILL_ALLOWLIST_URL
-        BaoLog.d(TAG, "Fetching skill allowlist from: $url")
-        val result =
-          getJsonResponse<SkillAllowlist>(url)
-            ?: throw Exception("Failed to fetch or parse JSON from $url")
-
-        val allowlist = result.jsonObj
-        BaoLog.d(TAG, "Successfully loaded ${allowlist.featuredSkills.size} featured skills.")
-
-        _uiState.update { currentState ->
-          currentState.copy(
-            loadingSkillAllowlist = false,
-            featuredSkills = allowlist.featuredSkills,
-          )
-        }
-      }.onFailure { e ->
-        BaoLog.e(TAG, "Error loading skill allowlist", e)
-        _uiState.update { currentState ->
-          currentState.copy(
-            loadingSkillAllowlist = false,
-            skillAllowlistError = "Failed to load skill list: ${e.message}",
-          )
-        }
+      val result = AllowlistService.loadAllowlist(
+        allowlistUrl = SKILL_ALLOWLIST_URL,
+        cacheTtlMs = ALLOWLIST_CACHE_TTL_MS,
+        cacheFilename = ALLOWLIST_CACHE_FILENAME,
+        filesDir = context.filesDir,
+      )
+      _uiState.update {
+        it.copy(
+          loadingSkillAllowlist = false,
+          featuredSkills = result.featuredSkills,
+          skillAllowlistError = result.error,
+        )
       }
     }
   }
@@ -336,95 +238,27 @@ constructor(
     setValidationError(null)
 
     viewModelScope.launch(Dispatchers.IO) {
-      runCatching {
-        BaoLog.d(TAG, "Validating skill from URL: $url")
-
-        // 1. Normalize the URL: remove trailing "/SKILL.md" or "/".
-        var normalizedUrl = url
-        if (normalizedUrl.endsWith("/SKILL.md")) {
-          normalizedUrl = normalizedUrl.dropLast("/SKILL.md".length)
-        }
-        if (normalizedUrl.endsWith("/")) {
-          normalizedUrl = normalizedUrl.dropLast(1)
-        }
-
-        // Validate scheme is https.
-        val parsedUri = URI(normalizedUrl)
-        if (parsedUri.scheme?.lowercase() != "https") {
-          BaoLog.w(TAG, "Rejected non-https URL scheme: ${parsedUri.scheme}")
-          val error = "Only HTTPS URLs are allowed. Got: ${parsedUri.scheme ?: "none"}"
-          setValidationError(error)
-          onValidationError(error)
-          return@launch
-        }
-
-        val skillMdUrl = "$normalizedUrl/SKILL.md"
-        BaoLog.d(TAG, "Fetching SKILL.md from: $skillMdUrl")
-
-        // 2. Read url/SKILL.md.
-        val mdContent =
-          runCatching {
-            val connection = com.google.ai.edge.gallery.common.network.HttpClient.openConnection(
-              url = URL(skillMdUrl),
-            )
-            InputStreamReader(connection.getInputStream()).use { reader -> reader.readText() }
-          }.getOrElse { e ->
-            BaoLog.e(TAG, "Error fetching SKILL.md from $skillMdUrl", e)
-            val error = "Failed to fetch SKILL.md: ${e.message}"
-            setValidationError(error)
-            onValidationError(error)
-            return@launch
-          }
-
-        if (mdContent.isEmpty()) {
-          val error = "SKILL.md is empty at $skillMdUrl"
-          setValidationError(error)
-          onValidationError(error)
-          return@launch
-        }
-
-        // 3. If it exists, read and convert it to proto.
-        val (skillProto, errors) =
-          convertSkillMdToProto(
-            mdContent,
-            builtIn = false,
-            selected = true,
-            skillUrl = normalizedUrl,
-          )
-
-        // 4. If conversion failed, report error.
-        if (errors.isNotEmpty()) {
-          val error = "Error parsing SKILL.md from $skillMdUrl: ${errors.joinToString(", ")}"
-          setValidationError(error)
-          onValidationError(error)
-          return@launch
-        }
-
-        skillProto?.let { skill ->
-          // 5. Check if the name already exists. If so, report error.
-          if (_uiState.value.skills.any { curSkill -> curSkill.skill.name == skill.name }) {
-            val error = "A skill with the name '${skill.name}' already exists."
-            setValidationError(error)
-            onValidationError(error)
-            return@launch
-          }
-
-          // 6. Add to ui states and data store.
-          addSkill(skill = skill, addToDataStore = true)
-          BaoLog.d(TAG, "Successfully added skill from URL: ${skill.name}")
-          firebaseAnalytics?.logEvent(
-            GalleryEvent.SKILL_MANAGEMENT.id,
-            getSkillLoggingParams(skill).apply { putString("action", SkillAction.ADD.value) },
-          )
-          onSuccess()
-        }
+      val result = SkillImportManager.validateFromUrl(
+        url = url,
+        context = context,
+        currentSkills = _uiState.value.skills.map { it.skill },
+      )
+      result.onSuccess { skill ->
+        addSkill(skill = skill, addToDataStore = true)
+        BaoLog.d(TAG, "Successfully added skill from URL: ${skill.name}")
+        firebaseAnalytics?.logEvent(
+          GalleryEvent.SKILL_MANAGEMENT.id,
+          getSkillLoggingParams(skill).apply { putString("action", SkillAction.ADD.value) },
+        )
+        setValidating(false)
+        onSuccess()
       }.onFailure { e ->
         BaoLog.e(TAG, "Error validating skill from URL", e)
-        val error = "Failed to validate skill: ${e.message}"
+        val error = e.message ?: "Failed to validate skill"
         setValidationError(error)
+        setValidating(false)
         onValidationError(error)
       }
-      setValidating(false)
     }
   }
 
@@ -433,12 +267,7 @@ constructor(
    * storage.
    */
   fun checkLocalSkillExisted(directoryUri: Uri): Boolean {
-    val originalImportDirName = getDisplayName(context, directoryUri)
-    if (originalImportDirName.isEmpty()) {
-      return false
-    }
-    val destDir = getSkillDestinationDir(originalImportDirName)
-    return destDir.exists()
+    return SkillImportManager.checkLocalSkillExisted(context, directoryUri)
   }
 
   /**
@@ -446,48 +275,17 @@ constructor(
    * [directoryUri]'s SKILL.md file already exists.
    */
   fun checkBuiltInSkillExistedForImportedSkill(directoryUri: Uri): Boolean {
-    BaoLog.d(TAG, "Checking built-in skill existed for imported skill: $directoryUri")
-
-    val rootFile = DocumentFile.fromTreeUri(context, directoryUri)
-    val skillMdFile = rootFile?.findFile("SKILL.md")
-
-    if (skillMdFile == null || !skillMdFile.exists()) {
-      BaoLog.w(TAG, "SKILL.md not found in the selected directory for built-in check.")
-      return false
-    }
-
-    val mdContent =
-      runCatching {
-          context.contentResolver.openInputStream(skillMdFile.uri)?.use { inputStream ->
-            inputStream.bufferedReader().use { it.readText() }
-          }
-        }
-        .getOrElse { e ->
-          BaoLog.e(TAG, "Error reading SKILL.md for built-in check", e)
-          return false
-        } ?: ""
-
-    if (mdContent.isEmpty()) {
-      BaoLog.w(TAG, "SKILL.md is empty for built-in check.")
-      return false
-    }
-
-    val (skillProto, errors) = convertSkillMdToProto(mdContent, builtIn = false, selected = false)
-
-    if (errors.isNotEmpty() || skillProto == null) {
-      BaoLog.w(TAG, "Error parsing SKILL.md for built-in check: ${errors.joinToString(", ")}")
-      return false
-    }
-
-    val importedSkillName = skillProto.name
-    return _uiState.value.skills.any { it.skill.builtIn && it.skill.name == importedSkillName }
+    return SkillImportManager.checkBuiltInSkillExistedForImportedSkill(
+      context = context,
+      directoryUri = directoryUri,
+      currentSkills = _uiState.value.skills.map { it.skill },
+    )
   }
 
   fun validateAndAddSkillFromLocalImport(
     onSuccess: () -> Unit,
     onValidationError: (error: String) -> Unit,
   ) {
-    // Set validation state to true and clear any previous errors.
     setValidating(true)
     setValidationError(null)
 
@@ -501,140 +299,27 @@ constructor(
     }
 
     viewModelScope.launch(Dispatchers.IO) {
-      runCatching {
-        BaoLog.d(TAG, "Validating skill from directory URI: $directoryUri")
-
-        // Get the DocumentFile representing the selected directory
-        val rootFile = DocumentFile.fromTreeUri(context, directoryUri)
-
-        // Find the SKILL.md file within that directory
-        val skillMdFile = rootFile?.findFile("SKILL.md")
-
-        if (skillMdFile == null || !skillMdFile.exists()) {
-          val error = "SKILL.md not found in the selected directory."
-          setValidationError(error)
-          onValidationError(error)
-          return@launch
-        }
-
-        // Read the content using the correctly resolved URI
-        val mdContent =
-          runCatching {
-              context.contentResolver.openInputStream(skillMdFile.uri)?.use { inputStream ->
-                inputStream.bufferedReader().use { it.readText() }
-              }
-            }
-            .getOrElse { e ->
-              BaoLog.e(TAG, "Error reading SKILL.md", e)
-              val error = "Failed to read SKILL.md: ${e.message}"
-              setValidationError(error)
-              onValidationError(error)
-              return@launch
-            } ?: ""
-
-        val (skillProto, errors) =
-          convertSkillMdToProto(mdContent, builtIn = false, selected = true)
-
-        if (errors.isNotEmpty()) {
-          val error = "Error parsing SKILL.md: ${errors.joinToString(", ")}"
-          setValidationError(error)
-          onValidationError(error)
-          return@launch
-        }
-
-        skillProto?.let {
-          // Successfully parsed the skill. Add the directory name.
-          val originalImportDirName = getDisplayName(context, directoryUri)
-          val destDir = getSkillDestinationDir(originalImportDirName)
-          val newImportDirName = destDir.relativeTo(context.filesDir).path
-
-          // Create the destination directory.
-          if (destDir.exists()) {
-            BaoLog.d(TAG, "Destination directory already exists, deleting: ${destDir.path}")
-            deleteSkill(name = skillProto.name)
-          }
-          if (!destDir.exists()) {
-            destDir.mkdirs()
-          }
-
-          // Check if the skill already exists.
-          if (_uiState.value.skills.any { curSkill -> curSkill.skill.name == skillProto.name }) {
-            setValidating(false)
-            val error = "A skill with the name '${skillProto.name}' already exists."
-            setValidationError(error)
-            onValidationError(error)
-            return@launch
-          }
-
-          val sourceDocumentFile = DocumentFile.fromTreeUri(context, directoryUri)
-          if (sourceDocumentFile == null) {
-            BaoLog.e(TAG, "Failed to get DocumentFile from URI: $directoryUri")
-            val error = "Failed to access the selected directory."
-            setValidationError(error)
-            onValidationError(error)
-            return@launch
-          }
-
-          // Records the first copy failure so the import is aborted instead of falsely succeeding.
-          var copyFailure: Throwable? = null
-          // Recursive function to copy a DocumentFile to a File
-          fun copyDocumentFile(source: DocumentFile, dest: File) {
-            if (source.isDirectory) {
-              dest.mkdirs()
-              for (child in source.listFiles()) {
-                val childName = child.name ?: continue
-                val childDest = File(dest, childName)
-                copyDocumentFile(child, childDest)
-              }
-            } else if (source.isFile) {
-              runCatching {
-                  BaoLog.d(TAG, "Copying file ${source.name} to ${dest.path}")
-                  context.contentResolver.openInputStream(source.uri)?.use { inputStream ->
-                    dest.outputStream().use { outputStream -> inputStream.copyTo(outputStream) }
-                  }
-                }
-                .onFailure { e ->
-                  BaoLog.e(TAG, "Error copying file ${source.name} to ${dest.path}", e)
-                  if (copyFailure == null) copyFailure = e
-                }
-            }
-          }
-
-          // Start copying from the root of the selected directory
-          copyDocumentFile(sourceDocumentFile, destDir)
-
-          // Abort the import if any file failed to copy — do not report false success.
-          copyFailure?.let { e ->
-            destDir.deleteRecursively()
-            val error = "Failed to copy skill files: ${e.message}"
-            setValidationError(error)
-            onValidationError(error)
-            return@launch
-          }
-
-          // Update the skill proto with the new import directory name.
-          val skillWithDir = it.toBuilder().setImportDirName(newImportDirName).build()
-          addSkill(skill = skillWithDir, addToDataStore = true)
-          BaoLog.d(TAG, "Successfully added skill from local import: ${skillWithDir.name}")
-          firebaseAnalytics?.logEvent(
-            GalleryEvent.SKILL_MANAGEMENT.id,
-            getSkillLoggingParams(skillWithDir).apply { putString("action", SkillAction.ADD.value) },
-          )
-          onSuccess()
-        }
-          ?: run {
-            // Should not happen if errors is empty, but good to handle.
-            val error = "Unknown error during SKILL.md conversion."
-            setValidationError(error)
-            onValidationError(error)
-          }
+      val result = SkillImportManager.validateFromLocalImport(
+        directoryUri = directoryUri,
+        context = context,
+        currentSkills = _uiState.value.skills.map { it.skill },
+      )
+      result.onSuccess { skillWithDir ->
+        addSkill(skill = skillWithDir, addToDataStore = true)
+        BaoLog.d(TAG, "Successfully added skill from local import: ${skillWithDir.name}")
+        firebaseAnalytics?.logEvent(
+          GalleryEvent.SKILL_MANAGEMENT.id,
+          getSkillLoggingParams(skillWithDir).apply { putString("action", SkillAction.ADD.value) },
+        )
+        setValidating(false)
+        onSuccess()
       }.onFailure { e ->
         BaoLog.e(TAG, "Error validating local skill import", e)
-        val error = "Failed to import skill: ${e.message}"
+        val error = e.message ?: "Failed to import skill"
         setValidationError(error)
+        setValidating(false)
         onValidationError(error)
       }
-      setValidating(false)
     }
   }
 
@@ -792,107 +477,6 @@ constructor(
     }
   }
 
-  /**
-   * Converts the content of a skill.md file to a [Skill] proto.
-   *
-   * The expected format is:
-   * ```
-   * ---
-   * name: name-of-the-skill
-   * description: description of the skill
-   * metadata:
-   *   key: value
-   * ---
-   *
-   * other instructions text
-   * ```
-   *
-   * @return A [Pair] containing the parsed [Skill] proto (or null if errors occurred) and a list of
-   *   error messages.
-   */
-  fun convertSkillMdToProto(
-    mdContent: String,
-    builtIn: Boolean,
-    selected: Boolean,
-    skillUrl: String = "",
-    importDir: String = "",
-  ): Pair<Skill?, List<String>> {
-    val parts = mdContent.split("---")
-    val errors = mutableListOf<String>()
-
-    if (parts.size < 3) {
-      errors.add("Invalid format: Expected at least two '---' sections.")
-      return Pair(null, errors)
-    }
-
-    // Part 1: Header (index 1)
-    val header = parts[1].trim()
-    var name: String? = null
-    var description: String? = null
-    var requireSecret = false
-    var requireSecretDescription = ""
-    var homepage: String? = null
-
-    var startMetadata = false
-    for (line in header.lines()) {
-      val trimmedLine = line.trim()
-      if (trimmedLine == "metadata:") {
-        startMetadata = true
-        continue
-      }
-      if (!startMetadata) {
-        when {
-          trimmedLine.startsWith("name:") -> name = trimmedLine.substringAfter("name:").trim()
-          trimmedLine.startsWith("description:") ->
-            description = trimmedLine.substringAfter("description:").trim()
-        }
-      } else {
-        when {
-          trimmedLine.startsWith("require-secret:") ->
-            requireSecret = trimmedLine.substringAfter("require-secret:").trim().toBoolean()
-          trimmedLine.startsWith("require-secret-description:") ->
-            requireSecretDescription =
-              trimmedLine.substringAfter("require-secret-description:").trim()
-          trimmedLine.startsWith("homepage:") ->
-            homepage = trimmedLine.substringAfter("homepage:").trim()
-        }
-      }
-    }
-
-    if (name.isNullOrEmpty()) {
-      errors.add("Missing or empty 'name' in the header.")
-    }
-    if (description.isNullOrEmpty()) {
-      errors.add("Missing or empty 'description' in the header.")
-    }
-
-    // Part 2: Instructions (index 2 onwards)
-    val instructions = parts.drop(2).joinToString("---").trim()
-
-    if (errors.isNotEmpty()) {
-      return Pair(null, errors)
-    }
-
-    val safeName = name ?: return Pair(null, listOf("Name is required"))
-    val safeDescription = description ?: return Pair(null, listOf("Description is required"))
-
-    val skill =
-      Skill.newBuilder()
-        .setName(safeName)
-        .setDescription(safeDescription)
-        .setInstructions(instructions)
-        .setBuiltIn(builtIn)
-        .setSelected(selected)
-        .setSkillUrl(skillUrl)
-        .setRequireSecret(requireSecret)
-        .setRequireSecretDescription(requireSecretDescription)
-        .setHomepage(homepage ?: "")
-        .setImportDirName(importDir)
-        .build()
-
-    return Pair(skill, emptyList())
-  }
-
   /** Saves or updates a custom skill. */
   fun saveSkillEdit(
     index: Int,
@@ -939,10 +523,10 @@ constructor(
           val skillMdFile = File(skillDestDir, "SKILL.md")
 
           // Write SKILL.md
-          writeSkillMd(skillMdFile, normalizedName, description, instructions)
+          SkillParser.writeSkillMd(skillMdFile, normalizedName, description, instructions)
 
           // Save scripts
-          saveScripts(scriptDestDir, scriptsContent)
+          SkillParser.saveScripts(scriptDestDir, scriptsContent)
 
           // Create and add new skill proto
           val newSkill =
@@ -1010,12 +594,12 @@ constructor(
           }
 
           // Update SKILL.md
-          writeSkillMd(newSkillMdFile, normalizedNewName, description, instructions)
+          SkillParser.writeSkillMd(newSkillMdFile, normalizedNewName, description, instructions)
 
           // Update scripts: Clear existing scripts and save new ones.
           newScriptDestDir.deleteRecursively()
           newScriptDestDir.mkdirs()
-          saveScripts(newScriptDestDir, scriptsContent)
+          SkillParser.saveScripts(newScriptDestDir, scriptsContent)
 
           // Update skill proto in state and data store
           val updatedSkill =
@@ -1102,11 +686,11 @@ constructor(
           } else {
             BaoLog.w(TAG, "Failed to delete script: ${scriptFile.path}")
           }
-        
+
 }.onFailure { e ->
 
           BaoLog.e(TAG, "Error deleting script ${scriptFile.path}", e)
-        
+
 }
       } else {
         BaoLog.d(TAG, "Script file not found, ignoring delete: ${scriptFile.path}")
@@ -1117,44 +701,6 @@ constructor(
   /** Checks if a skill with the given [skillName] is currently selected. */
   fun isSkillSelected(skillName: String): Boolean {
     return _uiState.value.skills.firstOrNull { it.skill.name == skillName }?.skill?.selected == true
-  }
-
-  private fun writeSkillMd(
-    skillMdFile: File,
-    name: String,
-    description: String,
-    instructions: String,
-  ) {
-    BaoLog.d(TAG, "Writing skill.md: ${skillMdFile.path}")
-    val mdContent =
-      """
-    ---
-    name: $name
-    description: $description
-    ---
-
-    $instructions
-    """
-        .trimIndent()
-    skillMdFile.writeText(mdContent)
-  }
-
-  private fun saveScripts(scriptDestDir: File, scriptsContent: Map<String, String>) {
-    scriptDestDir.mkdirs() // Ensure directory exists
-
-    // Clear existing files in the script directory
-    scriptDestDir.listFiles()?.forEach { it.delete() }
-
-    for ((scriptName, content) in scriptsContent) {
-      val scriptFile = File(scriptDestDir, scriptName)
-      BaoLog.d(TAG, "Saving script: ${scriptFile.path}")
-      runCatching {
-        scriptFile.writeText(content)
-        BaoLog.d(TAG, "Saved script: ${scriptFile.path}")
-      }.onFailure { e ->
-        BaoLog.e(TAG, "Error saving script ${scriptName} to ${scriptFile.path}", e)
-      }
-    }
   }
 
   private fun updateSkillInDataStore(oldName: String, updatedSkill: Skill) {
@@ -1226,45 +772,5 @@ constructor(
         putString("skill_id", getSkillShortId(skill))
       }
     return bundle
-  }
-
-  private fun getSkillDestinationDir(originalImportDirName: String): File {
-    val normalizedDirName = originalImportDirName.replace("\\s+".toRegex(), "-")
-    val newImportDirName = "skills/${normalizedDirName}"
-    return context.filesDir.resolve(newImportDirName)
-  }
-
-private val DEFAULT_DISABLED_SKILLS =
-  setOf("calculate-hash", "kitchen-adventure", "text-spinner", "send-email")
-}
-
-fun getDisplayName(context: Context, uri: Uri): String {
-  var name = ""
-  runCatching {
-    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-      val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-      if (nameIndex != -1 && cursor.moveToFirst()) {
-        name = cursor.getString(nameIndex)
-      }
-    }
-  }.onFailure {
-    // Keep the URI fallback below when display-name lookup is unavailable.
-  }
-  return name.ifEmpty { uri.path?.substringAfterLast('/') ?: "Unknown" }
-}
-
-fun decodeBase64ToBitmap(base64String: String): Bitmap? {
-  return runCatching {
-    // 1. Clean the string (remove headers if present)
-    val pureBase64 = base64String.substringAfter(",")
-
-    // 2. Decode the Base64 string into a byte array
-    val imageBytes = Base64.decode(pureBase64)
-
-    // 3. Convert the byte array into a Bitmap
-    BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
-  }.getOrElse { e ->
-    BaoLog.e(TAG, "Failed to decode image bytes", e)
-    null
   }
 }

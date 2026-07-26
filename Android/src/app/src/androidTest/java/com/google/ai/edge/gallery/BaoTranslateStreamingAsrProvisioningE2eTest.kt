@@ -20,6 +20,20 @@ import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.ai.edge.gallery.customtasks.baotranslate.BaoTranslateModelManager
+import com.google.ai.edge.gallery.customtasks.baotranslate.CaptionEngine
+import com.google.ai.edge.gallery.customtasks.baotranslate.captionEngineFor
+import com.google.ai.edge.gallery.customtasks.baotranslate.downloadCaptionModel
+import com.google.ai.edge.gallery.customtasks.baotranslate.getCaptionModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getKokoroModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getOpenVoiceConverterFile
+import com.google.ai.edge.gallery.customtasks.baotranslate.getOpenVoiceRefEncFile
+import com.google.ai.edge.gallery.customtasks.baotranslate.getStreamingAsrModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getSupertonicModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getTranslationModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getVadModelPath
+import com.google.ai.edge.gallery.customtasks.baotranslate.getWhisperModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.isOpenVoiceCloneAvailable
+import com.google.ai.edge.gallery.customtasks.baotranslate.isCaptionModelReady
 import com.google.ai.edge.gallery.customtasks.baotranslate.ModelStatus
 import com.google.ai.edge.gallery.customtasks.baotranslate.stt.StreamingSttPipeline
 import kotlinx.coroutines.runBlocking
@@ -61,7 +75,7 @@ class BaoTranslateStreamingAsrProvisioningE2eTest {
     val after = BaoTranslateModelManager.checkModelStatus(context, "streaming_asr")
     assertEquals("streaming_asr not Ready after provisioning, was $after", ModelStatus.Ready, after)
 
-    val dir = BaoTranslateModelManager.getStreamingAsrModelDir(context)
+    val dir = getStreamingAsrModelDir(context)
     Log.i(
       "StreamingAsrProvision",
       "STREAMING_ASR_PROVISIONED dir=${dir.absolutePath} bytes=${dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }}",

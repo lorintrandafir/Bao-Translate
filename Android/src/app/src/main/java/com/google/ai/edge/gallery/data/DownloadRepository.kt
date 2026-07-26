@@ -25,6 +25,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import com.google.ai.edge.gallery.common.BaoLog
+import com.google.ai.edge.gallery.common.ProjectConfig
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -313,12 +314,12 @@ class DefaultDownloadRepository(
     if (taskId.isEmpty()) {
       // If taskId is empty, it's a failed download. Just open the app's main screen.
       intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-        ?: Intent(Intent.ACTION_VIEW, "com.google.ai.edge.gallery://".toUri())
+        ?: Intent(Intent.ACTION_VIEW, "${ProjectConfig.deepLinkScheme}://".toUri())
     }
     // Download from global model manager. Open the global model manager screen.
     else if (taskId == DOWNLOAD_FROM_GLOBAL_MODEL_MANAGER_TASK_ID) {
       intent =
-        Intent(Intent.ACTION_VIEW, "com.google.ai.edge.gallery://global_model_manager".toUri())
+        Intent(Intent.ACTION_VIEW, ProjectConfig.deepLinkGlobalModelManager.toUri())
           .apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
     } else {
 
@@ -326,7 +327,7 @@ class DefaultDownloadRepository(
       intent =
         Intent(
             Intent.ACTION_VIEW,
-            "com.google.ai.edge.gallery://model/$taskId/${modelName}".toUri(),
+            "${ProjectConfig.deepLinkModelPath}$taskId/${modelName}".toUri(),
           )
           .apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
     }

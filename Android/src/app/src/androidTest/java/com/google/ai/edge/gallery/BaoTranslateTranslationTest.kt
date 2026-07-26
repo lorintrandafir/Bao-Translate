@@ -20,6 +20,20 @@ import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.ai.edge.gallery.customtasks.baotranslate.BaoTranslateModelManager
+import com.google.ai.edge.gallery.customtasks.baotranslate.CaptionEngine
+import com.google.ai.edge.gallery.customtasks.baotranslate.captionEngineFor
+import com.google.ai.edge.gallery.customtasks.baotranslate.downloadCaptionModel
+import com.google.ai.edge.gallery.customtasks.baotranslate.getCaptionModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getKokoroModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getOpenVoiceConverterFile
+import com.google.ai.edge.gallery.customtasks.baotranslate.getOpenVoiceRefEncFile
+import com.google.ai.edge.gallery.customtasks.baotranslate.getStreamingAsrModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getSupertonicModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getTranslationModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getVadModelPath
+import com.google.ai.edge.gallery.customtasks.baotranslate.getWhisperModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.isOpenVoiceCloneAvailable
+import com.google.ai.edge.gallery.customtasks.baotranslate.isCaptionModelReady
 import com.google.ai.edge.gallery.customtasks.baotranslate.ModelStatus
 import com.google.ai.edge.gallery.customtasks.baotranslate.translate.TranslationOutcome
 import com.google.ai.edge.gallery.customtasks.baotranslate.translate.TranslationPipeline
@@ -139,7 +153,7 @@ class BaoTranslateTranslationTest {
     try {
       assertTrue(
         "Kokoro TTS failed to initialize",
-        kokoro.initialize(BaoTranslateModelManager.getKokoroModelDir(context).absolutePath),
+        kokoro.initialize(getKokoroModelDir(context).absolutePath),
       )
 
       val text = "El gato bebe agua."
@@ -174,7 +188,7 @@ class BaoTranslateTranslationTest {
     try {
       assertTrue(
         "Kokoro TTS failed to initialize",
-        kokoro.initialize(BaoTranslateModelManager.getKokoroModelDir(context).absolutePath),
+        kokoro.initialize(getKokoroModelDir(context).absolutePath),
       )
       val samples = kokoro.synthesize(translated, KokoroTtsPipeline.getVoiceForLanguage("es"))
       assertNotNull("Kokoro produced no audio for translated peer text", samples)
@@ -220,7 +234,7 @@ class BaoTranslateTranslationTest {
     )
     val kokoro = KokoroTtsPipeline(context)
     try {
-      assertTrue("kokoro init", kokoro.initialize(BaoTranslateModelManager.getKokoroModelDir(context).absolutePath))
+      assertTrue("kokoro init", kokoro.initialize(getKokoroModelDir(context).absolutePath))
       val samples = kokoro.synthesize(translated, KokoroTtsPipeline.getVoiceForLanguage("es"))!!
       // Rough lower bound: 40ms per character of text. Below that, something is wrong.
       val minExpectedSeconds = translated.length * 0.04f
@@ -242,7 +256,7 @@ class BaoTranslateTranslationTest {
     ensureModelReady(context, "kokoro_tts")
     repeat(3) {
       val kokoro = KokoroTtsPipeline(context)
-      assertTrue("kokoro init #$it", kokoro.initialize(BaoTranslateModelManager.getKokoroModelDir(context).absolutePath))
+      assertTrue("kokoro init #$it", kokoro.initialize(getKokoroModelDir(context).absolutePath))
       kokoro.cleanup()
     }
   }
@@ -255,9 +269,9 @@ class BaoTranslateTranslationTest {
     val context = InstrumentationRegistry.getInstrumentation().targetContext
     ensureModelReady(context, "qwen25_1b")
     ensureModelReady(context, "gemma4_e2b")
-    val qwenFile = BaoTranslateModelManager.getTranslationModelDir(context, "qwen25_1b")
+    val qwenFile = getTranslationModelDir(context, "qwen25_1b")
       .listFiles { f -> f.extension == "litertlm" }?.firstOrNull()
-    val gemmaFile = BaoTranslateModelManager.getTranslationModelDir(context, "gemma4_e2b")
+    val gemmaFile = getTranslationModelDir(context, "gemma4_e2b")
       .listFiles { f -> f.extension == "litertlm" }?.firstOrNull()
     assertNotNull("qwen25_1b .litertlm missing", qwenFile)
     assertNotNull("gemma4_e2b .litertlm missing", gemmaFile)
@@ -315,7 +329,7 @@ class BaoTranslateTranslationTest {
   }
 
   private fun translationModelFile(context: Context, modelId: String): File {
-    val modelFile = BaoTranslateModelManager.getTranslationModelDir(context, modelId)
+    val modelFile = getTranslationModelDir(context, modelId)
       .listFiles { file -> (file.extension == "litertlm" || file.extension == "task") && file.length() > 0 }
       ?.maxByOrNull { it.length() }
 

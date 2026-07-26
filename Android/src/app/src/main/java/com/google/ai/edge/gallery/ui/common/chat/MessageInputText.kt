@@ -21,28 +21,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.Matrix
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import android.net.Uri
 import com.google.ai.edge.gallery.common.BaoLog
-import android.util.Size
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
-import androidx.camera.core.CameraControl
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageCapture
-import androidx.camera.core.ImageProxy
-import androidx.camera.core.resolutionselector.AspectRatioStrategy
-import androidx.camera.core.resolutionselector.ResolutionSelector
-import androidx.camera.core.resolutionselector.ResolutionStrategy
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.lifecycle.awaitInstance
-import androidx.camera.view.PreviewView
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -71,8 +55,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.rounded.AudioFile
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.FlipCameraAndroid
+
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Photo
@@ -85,7 +68,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.Text
@@ -114,18 +96,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import androidx.core.graphics.scale
-import androidx.exifinterface.media.ExifInterface
-import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.common.AudioClip
-import com.google.ai.edge.gallery.common.convertWavToMonoWithMaxSeconds
-import com.google.ai.edge.gallery.common.decodeSampledBitmapFromUri
-import com.google.ai.edge.gallery.common.rotateBitmap
 import com.google.ai.edge.gallery.data.MAX_AUDIO_CLIP_COUNT
 import com.google.ai.edge.gallery.data.MAX_IMAGE_COUNT
 import com.google.ai.edge.gallery.data.MAX_IMAGE_COUNT_AI_CORE
@@ -136,8 +110,6 @@ import com.google.ai.edge.gallery.ui.common.getTaskIconColor
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.theme.Dimensions
 import com.google.ai.edge.gallery.ui.theme.bodyLargeNarrow
-import java.io.FileInputStream
-import java.util.concurrent.Executors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -312,56 +284,12 @@ fun MessageInputText(
   }
 
   Column {
-    // A preview panel for the selected images and audio clips.
-    if (pickedImages.isNotEmpty() || pickedAudioClips.isNotEmpty()) {
-      Row(
-        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(Dimensions.Spacing.medium),
-      ) {
-        Spacer(modifier = Modifier.width(Dimensions.Spacing.medium))
-
-        for (image in pickedImages) {
-          Box(contentAlignment = Alignment.TopEnd) {
-            Image(
-              bitmap = image.asImageBitmap(),
-              contentDescription = stringResource(R.string.cd_image_thumbnail),
-              modifier =
-                Modifier.height(Dimensions.Component.imagePreviewHeight)
-                  .shadow(Dimensions.Spacing.xxs, shape = RoundedCornerShape(Dimensions.Spacing.small))
-                  .clip(RoundedCornerShape(Dimensions.Spacing.small))
-                  .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(Dimensions.Spacing.small)),
-            )
-            MediaPanelCloseButton { pickedImages = pickedImages.filter { image != it } }
-          }
-        }
-
-        for ((index, audioClip) in pickedAudioClips.withIndex()) {
-          Box(contentAlignment = Alignment.TopEnd) {
-            Box(
-              modifier =
-                Modifier.shadow(Dimensions.Spacing.xxs, shape = RoundedCornerShape(Dimensions.Spacing.small))
-                  .clip(RoundedCornerShape(Dimensions.Spacing.small))
-                  .background(MaterialTheme.colorScheme.surface)
-                  .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(Dimensions.Spacing.small))
-            ) {
-              AudioPlaybackPanel(
-                audioData = audioClip.audioData,
-                sampleRate = audioClip.sampleRate,
-                isRecording = false,
-                modifier = Modifier.padding(end = Dimensions.Spacing.medium),
-              )
-            }
-            MediaPanelCloseButton {
-              pickedAudioClips = pickedAudioClips.filterIndexed { curIndex, curAudioData ->
-                curIndex != index
-              }
-            }
-          }
-        }
-
-        Spacer(modifier = Modifier.width(Dimensions.Spacing.medium))
-      }
-    }
+    MediaPreviewPanel(
+      pickedImages = pickedImages,
+      pickedAudioClips = pickedAudioClips,
+      onRemoveImage = { image -> pickedImages = pickedImages.filter { it != image } },
+      onRemoveAudioClip = { index -> pickedAudioClips = pickedAudioClips.filterIndexed { i, _ -> i != index } },
+    )
 
     Box(contentAlignment = Alignment.Center, modifier = Modifier.heightIn(min = Dimensions.Component.inputMinHeight)) {
       AnimatedContent(targetState = showAudioRecorder) { curShowAudioRecorder ->
@@ -413,285 +341,88 @@ fun MessageInputText(
                   horizontalArrangement = Arrangement.spacedBy(Dimensions.Spacing.xs),
                 ) {
                   // A plus button to show a popup menu to add stuff to the chat.
-                  Box() {
-                    val enableAddButton = !inProgress && !isResettingSession && !modelInitializing
-                    OutlinedIconButton(
-                      enabled = enableAddButton,
-                      onClick = { showAddContentMenu = true },
-                      colors =
-                        IconButtonDefaults.iconButtonColors(
-                          disabledContentColor =
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
-                        ),
-                      border =
-                        IconButtonDefaults.outlinedIconButtonBorder(true)
-                          .copy(
-                            brush =
-                              SolidColor(
-                                MaterialTheme.colorScheme.outlineVariant.copy(
-                                  alpha = if (enableAddButton) 1f else 0.1f
-                                )
-                              )
-                          ),
-                    ) {
-                      Icon(
-                        Icons.Outlined.Add,
-                        contentDescription = stringResource(R.string.cd_add_content_icon),
-                        modifier = Modifier.size(Dimensions.Icon.medium),
+                  val isImageLimitExceededForAiCore =
+                    modelManagerUiState.selectedModel.runtimeType == RuntimeType.AICORE &&
+                      (imageCount + pickedImages.size) >= MAX_IMAGE_COUNT_AI_CORE
+                  val enableAddImageMenuItems =
+                    (imageCount + pickedImages.size) < MAX_IMAGE_COUNT
+                  val enableRecordAudioClipMenuItems =
+                    (audioClipMessageCount + pickedAudioClips.size) < MAX_AUDIO_CLIP_COUNT
+                  AddContentMenuButton(
+                    expanded = showAddContentMenu,
+                    onDismiss = { showAddContentMenu = false },
+                    showImagePicker = showImagePicker,
+                    showAudioPicker = showAudioPicker,
+                    enableAddImageMenuItems = enableAddImageMenuItems,
+                    enableRecordAudioClipMenuItems = enableRecordAudioClipMenuItems,
+                    isImageLimitExceededForAiCore = isImageLimitExceededForAiCore,
+                    onImageLimitExceeded = onImageLimitExceeded,
+                    inProgress = inProgress,
+                    isResettingSession = isResettingSession,
+                    modelInitializing = modelInitializing,
+                    context = context,
+                    takePicturePermissionLauncher = takePicturePermissionLauncher,
+                    recordAudioClipsPermissionLauncher = recordAudioClipsPermissionLauncher,
+                    pickMedia = pickMedia,
+                    pickWav = pickWav,
+                    onCameraGranted = { showCameraCaptureBottomSheet = true },
+                    onRecordAudioGranted = { handleClickRecordAudioClip() },
+                    onPickFromAlbum = {
+                      pickMedia.launch(
+                        PickVisualMediaRequest(
+                          ActivityResultContracts.PickVisualMedia.ImageOnly
+                        )
                       )
-                    }
-
-                    DropdownMenu(
-                      expanded = showAddContentMenu,
-                      onDismissRequest = { showAddContentMenu = false },
-                    ) {
-                      if (showImagePicker) {
-                        val isImageLimitExceededForAiCore =
-                          modelManagerUiState.selectedModel.runtimeType == RuntimeType.AICORE &&
-                            (imageCount + pickedImages.size) >= MAX_IMAGE_COUNT_AI_CORE
-                        val enableAddImageMenuItems =
-                          (imageCount + pickedImages.size) < MAX_IMAGE_COUNT
-                        // Take a picture.
-                        DropdownMenuItem(
-                          text = {
-                            Row(
-                              verticalAlignment = Alignment.CenterVertically,
-                              horizontalArrangement = Arrangement.spacedBy(Dimensions.Spacing.sm),
-                            ) {
-                              Icon(Icons.Rounded.PhotoCamera, contentDescription = null)
-                              Text(stringResource(R.string.chat_take_picture))
-                            }
-                          },
-                          enabled = enableAddImageMenuItems,
-                          onClick = {
-                            if (isImageLimitExceededForAiCore) {
-                              onImageLimitExceeded()
-                              showAddContentMenu = false
-                              return@DropdownMenuItem
-                            }
-                            // Check permission
-                            when (PackageManager.PERMISSION_GRANTED) {
-                              // Already got permission. Call the lambda.
-                              ContextCompat.checkSelfPermission(
-                                context,
-                                Manifest.permission.CAMERA,
-                              ) -> {
-                                showAddContentMenu = false
-                                showCameraCaptureBottomSheet = true
-                              }
-
-                              // Otherwise, ask for permission
-                              else -> {
-                                takePicturePermissionLauncher.launch(Manifest.permission.CAMERA)
-                              }
-                            }
-                          },
-                        )
-
-                        // Pick an image from album.
-                        DropdownMenuItem(
-                          text = {
-                            Row(
-                              verticalAlignment = Alignment.CenterVertically,
-                              horizontalArrangement = Arrangement.spacedBy(Dimensions.Spacing.sm),
-                            ) {
-                              Icon(Icons.Rounded.Photo, contentDescription = null)
-                              Text(stringResource(R.string.chat_pick_from_album))
-                            }
-                          },
-                          enabled = enableAddImageMenuItems,
-                          onClick = {
-                            if (isImageLimitExceededForAiCore) {
-                              onImageLimitExceeded()
-                              showAddContentMenu = false
-                              return@DropdownMenuItem
-                            }
-                            // Launch the photo picker and let the user choose only images.
-                            pickMedia.launch(
-                              PickVisualMediaRequest(
-                                ActivityResultContracts.PickVisualMedia.ImageOnly
-                              )
-                            )
-                            showAddContentMenu = false
-                          },
-                        )
-                      }
-
-                      // Audio related menu items.
-                      if (showAudioPicker) {
-                        val enableRecordAudioClipMenuItems =
-                          (audioClipMessageCount + pickedAudioClips.size) < MAX_AUDIO_CLIP_COUNT
-                        DropdownMenuItem(
-                          text = {
-                            Row(
-                              verticalAlignment = Alignment.CenterVertically,
-                              horizontalArrangement = Arrangement.spacedBy(Dimensions.Spacing.sm),
-                            ) {
-                              Icon(Icons.Rounded.Mic, contentDescription = null)
-                              Text(stringResource(R.string.chat_record_audio))
-                            }
-                          },
-                          enabled = enableRecordAudioClipMenuItems,
-                          onClick = {
-                            // Check permission
-                            when (PackageManager.PERMISSION_GRANTED) {
-                              // Already got permission. Call the lambda.
-                              ContextCompat.checkSelfPermission(
-                                context,
-                                Manifest.permission.RECORD_AUDIO,
-                              ) -> {
-                                handleClickRecordAudioClip()
-                              }
-
-                              // Otherwise, ask for permission
-                              else -> {
-                                recordAudioClipsPermissionLauncher.launch(
-                                  Manifest.permission.RECORD_AUDIO
-                                )
-                              }
-                            }
-                          },
-                        )
-
-                        DropdownMenuItem(
-                          text = {
-                            Row(
-                              verticalAlignment = Alignment.CenterVertically,
-                              horizontalArrangement = Arrangement.spacedBy(Dimensions.Spacing.sm),
-                            ) {
-                              Icon(Icons.Rounded.AudioFile, contentDescription = null)
-                              Text(stringResource(R.string.chat_pick_wav))
-                            }
-                          },
-                          enabled = enableRecordAudioClipMenuItems,
-                          onClick = {
-                            showAddContentMenu = false
-
-                            // Show file picker.
-                            val intent =
-                              Intent(Intent.ACTION_GET_CONTENT).apply {
-                                addCategory(Intent.CATEGORY_OPENABLE)
-                                type = "audio/*"
-
-                                // Provide a list of more specific MIME types to filter for.
-                                val mimeTypes = arrayOf("audio/wav", "audio/x-wav")
-                                putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes)
-
-                                // Single select.
-                                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
-                                  .addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-                                  .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                              }
-                            pickWav.launch(intent)
-                          },
-                        )
-                      }
-
-                      // Prompt history.
-                      DropdownMenuItem(
-                        text = {
-                          Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(Dimensions.Spacing.sm),
-                          ) {
-                            Icon(Icons.Rounded.History, contentDescription = null)
-                            Text(stringResource(R.string.chat_input_history))
-                          }
-                        },
-                        onClick = {
-                          showAddContentMenu = false
-                          showTextInputHistorySheet = true
-                        },
-                      )
-                    }
-                  }
+                    },
+                    onPickWav = {
+                      val intent =
+                        Intent(Intent.ACTION_GET_CONTENT).apply {
+                          addCategory(Intent.CATEGORY_OPENABLE)
+                          type = "audio/*"
+                          val mimeTypes = arrayOf("audio/wav", "audio/x-wav")
+                          putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes)
+                          putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
+                            .addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                      pickWav.launch(intent)
+                    },
+                    onShowInputHistory = { showTextInputHistorySheet = true },
+                  )
 
                   // Skills.
                   if (showSkillsPicker) {
-                    OutlinedButton(
-                      onClick = onSkillsClicked,
+                    SkillsPickerButton(
+                      count = skillCount,
                       enabled = !inProgress && !isResettingSession && !modelInitializing,
-                      contentPadding = PaddingValues(horizontal = Dimensions.Spacing.md, vertical = Dimensions.Spacing.small),
                     ) {
-                      val skillsLabel = stringResource(R.string.skills)
-                      Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(skillsLabel)
-                        Spacer(modifier = Modifier.width(Dimensions.Spacing.xs))
-                        Box(
-                          contentAlignment = Alignment.Center,
-                          modifier =
-                            Modifier.background(
-                                MaterialTheme.colorScheme.surfaceContainer,
-                                shape = CircleShape,
-                              )
-                              .height(Dimensions.Component.iconSmall)
-                              .widthIn(min = Dimensions.Component.iconSmall),
-                        ) {
-                          Text(
-                            text = skillCount.toString(),
-                            style = MaterialTheme.typography.labelSmall,
-                          )
-                        }
-                      }
+                      onSkillsClicked()
                     }
                   }
 
                   // MCP.
                   if (showMcpPicker) {
-                    OutlinedButton(
-                      onClick = onMcpClicked,
+                    SkillsPickerButton(
+                      count = mcpCount,
                       enabled = !inProgress && !isResettingSession && !modelInitializing,
-                      contentPadding = PaddingValues(horizontal = Dimensions.Spacing.md, vertical = Dimensions.Spacing.small),
+                      labelRes = R.string.mcp,
                     ) {
-                      val mcpLabel = stringResource(R.string.mcp)
-                      Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(mcpLabel)
-                        Spacer(modifier = Modifier.width(Dimensions.Spacing.xs))
-                        Box(
-                          contentAlignment = Alignment.Center,
-                          modifier =
-                            Modifier.background(
-                                MaterialTheme.colorScheme.surfaceContainer,
-                                shape = CircleShape,
-                              )
-                              .height(Dimensions.Component.iconSmall)
-                              .widthIn(min = Dimensions.Component.iconSmall),
-                        ) {
-                          Text(
-                            text = mcpCount.toString(),
-                            style = MaterialTheme.typography.labelSmall,
-                          )
-                        }
-                      }
+                      onMcpClicked()
                     }
                   }
                 }
 
-                // Stop button.
                 if (inProgress && showStopButtonWhenInProgress) {
                   if (!modelInitializing && !modelPreparing) {
-                    IconButton(
-                      onClick = onStopButtonClicked,
-                      colors =
-                        IconButtonDefaults.iconButtonColors(
-                          containerColor = MaterialTheme.colorScheme.secondaryContainer
-                        ),
-                    ) {
-                      Icon(
-                        Icons.Rounded.Stop,
-                        contentDescription = stringResource(R.string.cd_stop_icon),
-                        tint = MaterialTheme.colorScheme.primary,
-                      )
-                    }
+                    StopButton(onClick = onStopButtonClicked)
                   }
-                }
-                // Send button.
-                else {
-                  IconButton(
+                } else {
+                  SendButton(
                     enabled =
                       !inProgress &&
                         !isResettingSession &&
                         (curMessage.isNotEmpty() || pickedAudioClips.isNotEmpty()),
+                    task = task,
                     onClick = {
                       var message = curMessage.trim()
                       onSendMessage(
@@ -704,19 +435,7 @@ fun MessageInputText(
                       pickedImages = listOf()
                       pickedAudioClips = listOf()
                     },
-                    colors =
-                      IconButtonDefaults.iconButtonColors(
-                        containerColor = getTaskIconColor(task = task),
-                        disabledContainerColor = getTaskIconColor(task = task).copy(alpha = 0.3f),
-                      ),
-                  ) {
-                    Icon(
-                      Icons.AutoMirrored.Rounded.Send,
-                      contentDescription = stringResource(R.string.cd_send_prompt_icon),
-                      modifier = Modifier.offset(x = Dimensions.Spacing.xxs),
-                      tint = Color.White,
-                    )
-                  }
+                  )
                 }
               }
             }
@@ -768,401 +487,14 @@ fun MessageInputText(
     )
   }
 
-  if (showCameraCaptureBottomSheet) {
-    ModalBottomSheet(
-      sheetState = cameraCaptureSheetState,
-      onDismissRequest = { showCameraCaptureBottomSheet = false },
-    ) {
-      val lifecycleOwner = LocalLifecycleOwner.current
-      val previewUseCase = remember { androidx.camera.core.Preview.Builder().build() }
-      val imageCaptureUseCase = remember {
-        // Try to limit the image size.
-        val preferredSize = Size(512, 512)
-        val resolutionStrategy =
-          ResolutionStrategy(
-            preferredSize,
-            ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
-          )
-        val resolutionSelector =
-          ResolutionSelector.Builder()
-            .setResolutionStrategy(resolutionStrategy)
-            .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
-            .build()
-
-        ImageCapture.Builder().setResolutionSelector(resolutionSelector).build()
-      }
-      var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
-      var cameraControl by remember { mutableStateOf<CameraControl?>(null) }
-      val localContext = LocalContext.current
-      var cameraSide by remember { mutableIntStateOf(CameraSelector.LENS_FACING_BACK) }
-      val executor = remember { Executors.newSingleThreadExecutor() }
-
-      fun rebindCameraProvider() {
-        cameraProvider?.let { cameraProvider ->
-          val cameraSelector = CameraSelector.Builder().requireLensFacing(cameraSide).build()
-          runCatching {
-              cameraProvider.unbindAll()
-              val camera =
-                cameraProvider.bindToLifecycle(
-                  lifecycleOwner = lifecycleOwner,
-                  cameraSelector = cameraSelector,
-                  previewUseCase,
-                  imageCaptureUseCase,
-                )
-              cameraControl = camera.cameraControl
-            }
-            .onFailure { e -> BaoLog.d(TAG, "Failed to bind camera", e) }
-        }
-      }
-
-      LaunchedEffect(Unit) {
-        cameraProvider = ProcessCameraProvider.awaitInstance(localContext)
-        rebindCameraProvider()
-      }
-
-      LaunchedEffect(cameraSide) { rebindCameraProvider() }
-
-      DisposableEffect(Unit) { // Or key on lifecycleOwner if it makes more sense
-        onDispose {
-          cameraProvider?.unbindAll() // Unbind all use cases from the camera provider
-          if (!executor.isShutdown) {
-            executor.shutdown() // Shut down the executor service
-          }
-        }
-      }
-
-      Box(modifier = Modifier.fillMaxSize()) {
-        // PreviewView for the camera feed.
-        AndroidView(
-          modifier = Modifier.fillMaxSize(),
-          factory = { ctx ->
-            PreviewView(ctx).also {
-              previewUseCase.surfaceProvider = it.surfaceProvider
-              rebindCameraProvider()
-            }
-          },
-        )
-
-        // Close button.
-        IconButton(
-          onClick = {
-            scope.launch {
-              cameraCaptureSheetState.hide()
-              showCameraCaptureBottomSheet = false
-            }
-          },
-          colors =
-            IconButtonDefaults.iconButtonColors(
-              containerColor = MaterialTheme.colorScheme.surfaceVariant
-            ),
-          modifier = Modifier.offset(x = -Dimensions.Spacing.small, y = Dimensions.Spacing.small).align(Alignment.TopEnd),
-        ) {
-          Icon(
-            Icons.Rounded.Close,
-            contentDescription = stringResource(R.string.cd_close_icon),
-            tint = MaterialTheme.colorScheme.primary,
-          )
-        }
-
-        // Button that triggers the image capture process
-        IconButton(
-          colors =
-            IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primary),
-          modifier =
-            Modifier.align(Alignment.BottomCenter)
-              .padding(bottom = Dimensions.Spacing.xl)
-              .size(size = Dimensions.Component.shutterButtonSize)
-              .border(width = Dimensions.Spacing.xxs, color = MaterialTheme.colorScheme.onPrimary, CircleShape),
-          onClick = {
-            val callback =
-              object : ImageCapture.OnImageCapturedCallback() {
-                override fun onCaptureSuccess(image: ImageProxy) {
-                  val captureOutcome =
-                    runCatching {
-                      var bitmap = image.toBitmap()
-                      val rotation = sensorObserver.currentRotation + image.imageInfo.rotationDegrees
-                      bitmap =
-                        if (rotation != 0) {
-                          val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
-                          Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-                        } else bitmap
-                      bitmap = resizeBitmap(originalBitmap = bitmap)
-                      updatePickedImages(listOf(bitmap))
-                    }
-                  image.close()
-                  captureOutcome.onFailure { e -> BaoLog.e(TAG, "Failed to process image", e) }
-                  scope.launch {
-                    cameraCaptureSheetState.hide()
-                    showCameraCaptureBottomSheet = false
-                  }
-                }
-              }
-            imageCaptureUseCase.takePicture(executor, callback)
-          },
-        ) {
-          Icon(
-            Icons.Rounded.PhotoCamera,
-            contentDescription = stringResource(R.string.cd_camera_shutter_icon),
-            tint = MaterialTheme.colorScheme.onPrimary,
-            modifier = Modifier.size(Dimensions.Component.shutterIconSize),
-          )
-        }
-
-        // Button that toggles the front and back camera.
-        if (hasFrontCamera) {
-          IconButton(
-            colors =
-              IconButtonDefaults.iconButtonColors(
-                containerColor = MaterialTheme.colorScheme.secondaryContainer
-              ),
-            modifier =
-              Modifier.align(Alignment.BottomEnd).padding(bottom = 40.dp, end = Dimensions.Spacing.xl).size(Dimensions.Icon.xl),
-            onClick = {
-              cameraSide =
-                when (cameraSide) {
-                  CameraSelector.LENS_FACING_BACK -> CameraSelector.LENS_FACING_FRONT
-                  else -> CameraSelector.LENS_FACING_BACK
-                }
-            },
-          ) {
-            Icon(
-              Icons.Rounded.FlipCameraAndroid,
-              contentDescription = stringResource(R.string.cd_toggle_front_back_camera_icon),
-              tint = MaterialTheme.colorScheme.onSecondaryContainer,
-              modifier = Modifier.size(Dimensions.Icon.medium),
-            )
-          }
-        }
-      }
-    }
-  }
-}
-
-@Composable
-private fun MediaPanelCloseButton(onClicked: () -> Unit) {
-  Box(
-    modifier =
-      Modifier.offset(x = Dimensions.Indicator.medium, y = -Dimensions.Indicator.medium)
-        .clip(CircleShape)
-        .background(MaterialTheme.colorScheme.surface)
-        .border(Dimensions.Component.borderWidth, MaterialTheme.colorScheme.outline, CircleShape)
-        .clickable { onClicked() }
-  ) {
-    Icon(
-      Icons.Rounded.Close,
-      contentDescription = stringResource(R.string.cd_delete_icon),
-      modifier = Modifier.padding(3.dp).size(Dimensions.Icon.small),
-    )
-  }
-}
-
-private fun handleImagesSelected(
-  context: Context,
-  uris: List<Uri>,
-  onImagesSelected: (List<Bitmap>) -> Unit,
-) {
-  val images: MutableList<Bitmap> = mutableListOf()
-  for (uri in uris) {
-    val bitmap: Bitmap? =
-      runCatching {
-        val inputStream =
-          if (uri.scheme == null || uri.scheme == "file") {
-            FileInputStream(uri.path ?: "")
-          } else {
-            context.contentResolver.openInputStream(uri)
-          }
-        if (inputStream != null) {
-          // Read the EXIF metadata from the picture and rotate it correctly.
-          val exif = ExifInterface(inputStream)
-          val orientation =
-            exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
-          // You MUST close the first input stream before opening another one on the same URI.
-          inputStream.close()
-
-          // The let block will now return the rotated bitmap
-          decodeSampledBitmapFromUri(context, uri, 1024, 1024)?.let { originalBitmap ->
-            rotateBitmap(bitmap = originalBitmap, orientation = orientation)
-          }
-        } else {
-          null
-        }
-      }.getOrElse { e ->
-        BaoLog.e(TAG, "Failed to decode selected image", e)
-        null
-      }
-    if (bitmap != null) {
-      images.add(bitmap)
-    }
-  }
-  if (images.isNotEmpty()) {
-    onImagesSelected(images)
-  }
-}
-
-private fun handleAudioWavSelected(
-  context: Context,
-  uri: Uri,
-  onAudioSelected: (AudioClip) -> Unit,
-) {
-  convertWavToMonoWithMaxSeconds(context = context, stereoUri = uri)?.let { audioClip ->
-    onAudioSelected(audioClip)
-  }
-}
-
-/**
- * Resizes a given Bitmap to fit within a square of a specified size, while maintaining its original
- * aspect ratio.
- */
-private fun resizeBitmap(originalBitmap: Bitmap, size: Int = 1024): Bitmap {
-  val originalWidth = originalBitmap.width
-  val originalHeight = originalBitmap.height
-
-  // Return the original bitmap if it's already within the specified size.
-  if (originalWidth <= size && originalHeight <= size) {
-    return originalBitmap
-  }
-
-  val aspectRatio: Float = originalWidth.toFloat() / originalHeight.toFloat()
-  val newWidth: Int
-  val newHeight: Int
-
-  if (aspectRatio > 1) {
-    // Landscape or square orientation
-    newWidth = size
-    newHeight = (size / aspectRatio).toInt()
-  } else {
-    // Portrait orientation
-    newHeight = size
-    newWidth = (size * aspectRatio).toInt()
-  }
-
-  BaoLog.d(TAG, "Resizing image from $originalWidth x $originalHeight to $newWidth x $newHeight")
-
-  // Create a new scaled bitmap using the calculated dimensions
-  return originalBitmap.scale(newWidth, newHeight)
-}
-
-private fun checkFrontCamera(context: Context, callback: (Boolean) -> Unit) {
-  val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
-  cameraProviderFuture.addListener(
-    {
-      val cameraProvider = cameraProviderFuture.get()
-      runCatching {
-
-        // Attempt to select the default front camera
-        val hasFront = cameraProvider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA)
-        callback(hasFront)
-      
-}.onFailure { e ->
-
-        BaoLog.e(TAG, "Failed to process audio input", e)
-        callback(false)
-      
-}
-    },
-    ContextCompat.getMainExecutor(context),
+  CameraCaptureBottomSheet(
+    showCameraCaptureBottomSheet = showCameraCaptureBottomSheet,
+    hasFrontCamera = hasFrontCamera,
+    sensorObserver = sensorObserver,
+    onPickedImagesChanged = { updatePickedImages(it) },
+    onDismiss = { showCameraCaptureBottomSheet = false },
+    onSheetHidden = { showCameraCaptureBottomSheet = false },
   )
 }
 
-private fun createMessagesToSend(
-  pickedImages: List<Bitmap>,
-  audioClips: List<AudioClip>,
-  text: String,
-): List<ChatMessage> {
-  val messages: MutableList<ChatMessage> = mutableListOf()
 
-  // Add image message.
-  if (pickedImages.isNotEmpty()) {
-    // Cap the number of image messages.
-    var curPickedImages = pickedImages.toList()
-    if (curPickedImages.size > MAX_IMAGE_COUNT) {
-      curPickedImages = curPickedImages.subList(fromIndex = 0, toIndex = MAX_IMAGE_COUNT)
-    }
-    messages.add(
-      ChatMessageImage(
-        bitmaps = curPickedImages,
-        imageBitMaps = curPickedImages.map { it.asImageBitmap() },
-        side = ChatSide.USER,
-      )
-    )
-  }
-
-  // Add audio messages.
-  var audioMessages: MutableList<ChatMessageAudioClip> = mutableListOf()
-  if (audioClips.isNotEmpty()) {
-    for (audioClip in audioClips) {
-      audioMessages.add(
-        ChatMessageAudioClip(
-          audioData = audioClip.audioData,
-          sampleRate = audioClip.sampleRate,
-          side = ChatSide.USER,
-        )
-      )
-    }
-  }
-  // Cap the number of audio messages.
-  if (audioMessages.size > MAX_AUDIO_CLIP_COUNT) {
-    audioMessages = audioMessages.subList(fromIndex = 0, toIndex = MAX_AUDIO_CLIP_COUNT)
-  }
-  messages.addAll(audioMessages)
-
-  if (text.isNotEmpty()) {
-    messages.add(ChatMessageText(content = text, side = ChatSide.USER))
-  }
-
-  return messages
-}
-
-/**
- * A private class that acts as a LifecycleObserver to monitor sensor events for a device's
- * orientation, specifically using the accelerometer.
- *
- * This observer registers for accelerometer events in `onResume` and unregisters in `onPause` to
- * conserve battery and resources. It calculates the device's rotation (0, 90, 180, -90) by checking
- * if the acceleration on the X or Y axis exceeds a threshold of 7.0 m/s^2, which corresponds to
- * gravity's pull when the device is held in a cardinal direction. A 'dead zone' is used to prevent
- * the rotation from "chattering" when the device is held at an angle between the cardinal
- * directions.
- */
-private class SensorObserver(context: Context) : DefaultLifecycleObserver, SensorEventListener {
-  private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-  private val accelerometer: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-
-  var currentRotation = 0
-
-  override fun onResume(owner: LifecycleOwner) {
-    super.onResume(owner)
-    accelerometer?.let {
-      sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
-    }
-  }
-
-  override fun onPause(owner: LifecycleOwner) {
-    super.onPause(owner)
-    sensorManager.unregisterListener(this)
-  }
-
-  override fun onSensorChanged(event: SensorEvent?) {
-    if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
-      val x = event.values[0]
-      val y = event.values[1]
-
-      // When the phone is on its side, gravity acts primarily along the x-axis.
-      // When the phone is upright, gravity acts primarily along the y-axis.
-      val newOrientation =
-        when {
-          x < -7.0 -> 90
-          x > 7.0 -> -90
-          y < -7.0 -> 180
-          y > 7.0 -> 0
-          else -> currentRotation // Keep the last known orientation
-        }
-
-      if (newOrientation != currentRotation) {
-        currentRotation = newOrientation
-      }
-    }
-  }
-
-  override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-}

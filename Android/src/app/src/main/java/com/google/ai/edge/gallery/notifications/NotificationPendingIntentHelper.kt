@@ -43,10 +43,8 @@ object NotificationPendingIntentHelper {
     channelId: String,
     channelName: String,
   ): PendingIntent {
-    val receiverClass =
-      Class.forName("com.google.ai.edge.gallery.notifications.NotificationReceiver")
     val intent =
-      Intent(context, receiverClass).apply {
+      Intent(context, NotificationReceiver::class.java).apply {
         putExtra(EXTRA_ID, id)
         putExtra(EXTRA_TITLE, title)
         putExtra(EXTRA_MESSAGE, message)

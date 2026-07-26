@@ -63,31 +63,29 @@ android {
   compileSdk = 37
 
   defaultConfig {
-    val huggingFaceClientId =
-      providers.gradleProperty("huggingFaceClientId")
-        .orElse(providers.environmentVariable("HUGGING_FACE_CLIENT_ID"))
-        .orElse("")
+    // Build-time configuration: gradle property, then environment variable, then default. Keeps
+    // credentials and fork-specific endpoints out of source.
+    fun config(property: String, env: String, default: String): String =
+      providers.gradleProperty(property)
+        .orElse(providers.environmentVariable(env))
+        .orElse(default)
         .get()
-    val huggingFaceRedirectUri =
-      providers.gradleProperty("huggingFaceRedirectUri")
-        .orElse(providers.environmentVariable("HUGGING_FACE_REDIRECT_URI"))
-        .orElse("")
-        .get()
-    val huggingFaceRedirectScheme =
-      providers.gradleProperty("huggingFaceRedirectScheme")
-        .orElse(providers.environmentVariable("HUGGING_FACE_REDIRECT_SCHEME"))
-        .orElse("com.google.ai.edge.gallery")
-        .get()
-    val huggingFaceAuthEndpoint =
-      providers.gradleProperty("huggingFaceAuthEndpoint")
-        .orElse(providers.environmentVariable("HUGGING_FACE_AUTH_ENDPOINT"))
-        .orElse("")
-        .get()
-    val huggingFaceTokenEndpoint =
-      providers.gradleProperty("huggingFaceTokenEndpoint")
-        .orElse(providers.environmentVariable("HUGGING_FACE_TOKEN_ENDPOINT"))
-        .orElse("")
-        .get()
+
+    // Hugging Face OAuth. Blank by default — ProjectConfig.isHuggingFaceOAuthConfigured gates the
+    // sign-in flow off rather than failing at runtime on placeholder credentials.
+    val hfClientId = config("huggingFaceClientId", "HUGGING_FACE_CLIENT_ID", "")
+    val hfRedirectUri = config("huggingFaceRedirectUri", "HUGGING_FACE_REDIRECT_URI", "")
+    val hfOauth = "https://huggingface.co/oauth"
+    val hfAuthEndpoint =
+      config("huggingFaceAuthEndpoint", "HUGGING_FACE_AUTH_ENDPOINT", "$hfOauth/authorize")
+    val hfTokenEndpoint =
+      config("huggingFaceTokenEndpoint", "HUGGING_FACE_TOKEN_ENDPOINT", "$hfOauth/token")
+    val hfRedirectScheme =
+      config(
+        "huggingFaceRedirectScheme",
+        "HUGGING_FACE_REDIRECT_SCHEME",
+        "com.google.ai.edge.gallery",
+      )
 
     applicationId = "com.google.ai.edge.gallery"
     minSdk = 31
@@ -95,41 +93,49 @@ android {
     versionCode = 33
     versionName = "1.0.15"
 
-    manifestPlaceholders["appAuthRedirectScheme"] = huggingFaceRedirectScheme
+    // The scheme must match the "Redirect URLs" registered in the HuggingFace app. AppAuth
+    // intercepts redirects matching it via this manifest placeholder.
+    manifestPlaceholders["appAuthRedirectScheme"] = hfRedirectScheme
     manifestPlaceholders["applicationName"] = "com.google.ai.edge.gallery.GalleryApplication"
     manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
     manifestPlaceholders["appRoundIcon"] = "@mipmap/ic_launcher_round"
 
-    buildConfigField(
-      "String",
-      "HUGGING_FACE_CLIENT_ID",
-      "\"${huggingFaceClientId.replace("\\", "\\\\").replace("\"", "\\\"")}\"",
+    // Escapes backslashes/quotes so a supplied value cannot break out of the generated literal.
+    fun stringField(name: String, value: String) =
+      buildConfigField("String", name, "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
+
+    stringField("HUGGING_FACE_CLIENT_ID", hfClientId)
+    stringField("HUGGING_FACE_REDIRECT_URI", hfRedirectUri)
+    stringField("HUGGING_FACE_REDIRECT_SCHEME", hfRedirectScheme)
+    stringField("HUGGING_FACE_AUTH_ENDPOINT", hfAuthEndpoint)
+    stringField("HUGGING_FACE_TOKEN_ENDPOINT", hfTokenEndpoint)
+
+    // Remote endpoints for the featured-skills list, curated model index, and release notifier.
+    val modelAllowlistDefault =
+      "https://raw.githubusercontent.com/google-ai-edge/gallery/refs/heads/main/model_allowlists"
+    stringField("SKILL_ALLOWLIST_URL", config("bao.skillAllowlistUrl", "SKILL_ALLOWLIST_URL", ""))
+    stringField(
+      "MODEL_ALLOWLIST_BASE_URL",
+      config("bao.modelAllowlistBaseUrl", "MODEL_ALLOWLIST_BASE_URL", modelAllowlistDefault),
     )
-    buildConfigField(
-      "String",
-      "HUGGING_FACE_REDIRECT_URI",
-      "\"${huggingFaceRedirectUri.replace("\\", "\\\\").replace("\"", "\\\"")}\"",
-    )
-    buildConfigField(
-      "String",
-      "HUGGING_FACE_AUTH_ENDPOINT",
-      "\"${huggingFaceAuthEndpoint.replace("\\", "\\\\").replace("\"", "\\\"")}\"",
-    )
-    buildConfigField(
-      "String",
-      "HUGGING_FACE_TOKEN_ENDPOINT",
-      "\"${huggingFaceTokenEndpoint.replace("\\", "\\\\").replace("\"", "\\\"")}\"",
+    stringField(
+      "RELEASE_CHECK_REPO",
+      config("bao.releaseCheckRepo", "RELEASE_CHECK_REPO", "google-ai-edge/gallery"),
     )
     buildConfigField("boolean", "FIREBASE_CONFIGURED", firebaseConfigured.toString())
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
+  // Pre-release: debug-only builds. The app is not yet signed for distribution. When a release
+  // keystore becomes available, add a `signingConfigs { create("release") { ... } }` block and
+  // wire it here. Until then, `assembleRelease` will produce an unsigned APK (not installable on
+  // devices). Use `assembleDebug` for all local and CI builds.
   buildTypes {
     release {
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("debug")
+      // No signingConfig — unsigned release builds only until a keystore is provisioned.
     }
   }
   compileOptions {
@@ -291,8 +297,8 @@ dependencies {
   implementation(libs.zxing.core)
 }
 
-// Verification gates (verifyReleaseReady, testDebugUnitTestStrict) live in their own script so
-// this file stays focused on Android/Kotlin configuration.
+// Verification gates (verifyReleaseReady, testDebugUnitTestStrict) and the JDK 21 test launcher
+// live in their own script so this file stays focused on Android/Kotlin configuration.
 //
 // The script lives under ../gradle/ rather than in this module directory on purpose: Android
 // Lint's `checkBuildScripts` pass walks every *.gradle.kts inside the module and crashes in the
@@ -365,7 +371,6 @@ protobuf {
   generateProtoTasks { all().configureEach { builtins { create("java") { option("lite") } } } }
 }
 
-
 // Sync skills/ into the app bundle as a pre-build step.
 // skills/ is the single source of truth; the Android copy is gitignored.
 // Layout must stay FLAT (assets/skills/<id>/SKILL.md) — SkillManagerViewModel
@@ -391,6 +396,3 @@ tasks.register<Sync>("syncSkills") {
 tasks.named("preBuild") {
   dependsOn("syncSkills")
 }
-
-// Test-task JVM configuration lives in gradle/verification.gradle.kts alongside the other
-// verification wiring.

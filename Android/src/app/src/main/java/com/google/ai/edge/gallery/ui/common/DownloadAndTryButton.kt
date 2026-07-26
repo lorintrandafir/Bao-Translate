@@ -449,121 +449,29 @@ fun DownloadAndTryButton(
   }
   // Download progress.
   else {
-    val animatedProgress = remember { Animatable(0f) }
-
-    var downloadProgressModifier: Modifier = modifier
-    if (!compact) {
-      downloadProgressModifier = downloadProgressModifier.fillMaxWidth()
-    }
-    downloadProgressModifier =
-      downloadProgressModifier
-        .clip(CircleShape)
-        .background(MaterialTheme.colorScheme.surfaceContainer)
-        .padding(horizontal = 8.dp)
-        .height(42.dp)
-    Row(modifier = downloadProgressModifier, verticalAlignment = Alignment.CenterVertically) {
-      if (checkingToken) {
-        Text(
-          stringResource(R.string.checking_access),
-          style = MaterialTheme.typography.bodyMedium,
-          color = MaterialTheme.colorScheme.onSurface,
-          textAlign = TextAlign.Center,
-          modifier = if (!compact) Modifier.fillMaxWidth() else Modifier.padding(horizontal = 4.dp),
-        )
-      } else {
-        Text(
-          "${(downloadProgress * 100).toInt()}%",
-          style =
-            MaterialTheme.typography.bodyMedium.copy(
-              // This stops numbers from "jumping around" when being updated.
-              fontFeatureSettings = "tnum"
-            ),
-          color = MaterialTheme.colorScheme.onSurface,
-          modifier = Modifier.padding(start = 12.dp).width(if (compact) 32.dp else 44.dp),
-        )
-        if (!compact) {
-          val color =
-            if (task != null) getTaskBgGradientColors(task = task)[1]
-            else MaterialTheme.colorScheme.primary
-          LinearProgressIndicator(
-            modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
-            progress = { animatedProgress.value },
-            color = color,
-            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-          )
-        }
-        val cbStop = stringResource(R.string.cd_stop_icon)
-        IconButton(
-          onClick = {
-            downloadStarted = false
-            modelManagerViewModel.cancelDownloadModel(model = model)
-          },
-          colors =
-            IconButtonDefaults.iconButtonColors(
-              containerColor = MaterialTheme.colorScheme.surfaceContainer
-            ),
-          modifier = Modifier.semantics { contentDescription = cbStop },
-        ) {
-          Icon(
-            Icons.Outlined.Close,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurface,
-          )
-        }
-      }
-    }
-    LaunchedEffect(downloadProgress) {
-      animatedProgress.animateTo(downloadProgress, animationSpec = tween(150))
-    }
+    DownloadProgressSection(
+      compact = compact,
+      task = task,
+      downloadProgress = downloadProgress,
+      checkingToken = checkingToken,
+      model = model,
+      modelManagerViewModel = modelManagerViewModel,
+      modifier = modifier,
+      onCancel = { downloadStarted = false },
+    )
   }
 
-  // A ModalBottomSheet composable that displays information about the user agreement
-  // for a gated model and provides a button to open the agreement in a custom tab.
-  // Upon clicking the button, it constructs the agreement URL, launches it using a
-  // custom tab, and then dismisses the bottom sheet.
-  if (showAgreementAckSheet) {
-    ModalBottomSheet(
-      onDismissRequest = {
-        showAgreementAckSheet = false
-        checkingToken = false
-      },
-      sheetState = sheetState,
-      modifier = Modifier.wrapContentHeight(),
-    ) {
-      Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.padding(horizontal = 16.dp),
-      ) {
-        Text(
-          stringResource(R.string.acknowledge_user_agreement),
-          style = MaterialTheme.typography.titleLarge,
-        )
-        Text(
-          stringResource(R.string.gated_model_agreement_message),
-          style = MaterialTheme.typography.bodyMedium,
-          modifier = Modifier.padding(vertical = 16.dp),
-        )
-        Button(
-          onClick = {
-            // Get agreement url from model url.
-            val index = model.url.indexOf("/resolve/")
-            // Show it in a tab.
-            if (index >= 0) {
-              val agreementUrl = model.url.substring(0, index)
-
-              val customTabsIntent = CustomTabsIntent.Builder().build()
-              customTabsIntent.intent.setData(agreementUrl.toUri())
-              agreementAckLauncher.launch(customTabsIntent.intent)
-            }
-            // Dismiss the sheet.
-            showAgreementAckSheet = false
-          }
-        ) {
-          Text(stringResource(R.string.open_user_agreement))
-        }
-      }
-    }
-  }
+  AgreementAckSheet(
+    show = showAgreementAckSheet,
+    onDismiss = {
+      showAgreementAckSheet = false
+      checkingToken = false
+    },
+    onAgreementClicked = { showAgreementAckSheet = false },
+    agreementAckLauncher = agreementAckLauncher,
+    sheetState = sheetState,
+    model = model,
+  )
 
   if (showErrorDialog) {
     AlertDialog(

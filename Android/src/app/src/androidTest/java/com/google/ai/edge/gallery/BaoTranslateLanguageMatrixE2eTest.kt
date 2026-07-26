@@ -23,6 +23,20 @@ import android.speech.tts.UtteranceProgressListener
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.ai.edge.gallery.customtasks.baotranslate.BaoTranslateModelManager
+import com.google.ai.edge.gallery.customtasks.baotranslate.CaptionEngine
+import com.google.ai.edge.gallery.customtasks.baotranslate.captionEngineFor
+import com.google.ai.edge.gallery.customtasks.baotranslate.downloadCaptionModel
+import com.google.ai.edge.gallery.customtasks.baotranslate.getCaptionModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getKokoroModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getOpenVoiceConverterFile
+import com.google.ai.edge.gallery.customtasks.baotranslate.getOpenVoiceRefEncFile
+import com.google.ai.edge.gallery.customtasks.baotranslate.getStreamingAsrModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getSupertonicModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getTranslationModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getVadModelPath
+import com.google.ai.edge.gallery.customtasks.baotranslate.getWhisperModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.isOpenVoiceCloneAvailable
+import com.google.ai.edge.gallery.customtasks.baotranslate.isCaptionModelReady
 import com.google.ai.edge.gallery.customtasks.baotranslate.ModelStatus
 import com.google.ai.edge.gallery.customtasks.baotranslate.audio.AudioResampler
 import com.google.ai.edge.gallery.customtasks.baotranslate.audio.WavUtils
@@ -93,7 +107,7 @@ class BaoTranslateLanguageMatrixE2eTest {
     val translation = TranslationPipeline(ctx)
     val failures = mutableListOf<String>()
     try {
-      val litertlm = BaoTranslateModelManager.getTranslationModelDir(ctx, modelId)
+      val litertlm = getTranslationModelDir(ctx, modelId)
         .listFiles { f -> f.extension == "litertlm" }?.firstOrNull()
       assertTrue("$modelId .litertlm missing", litertlm != null)
       assertTrue("$modelId init", translation.initialize(litertlm!!.absolutePath))
@@ -147,7 +161,7 @@ class BaoTranslateLanguageMatrixE2eTest {
       RecogCase("it", Locale.ITALY, "Buongiorno, come stai oggi?", listOf("buongiorno", "come", "stai", "oggi")),
       RecogCase("ru", Locale.forLanguageTag("ru-RU"), "Dobroe utro, kak dela segodnya?", listOf("утро", "добро", "дела"), 'Ѐ'..'ӿ'),
     )
-    val whisperDir = BaoTranslateModelManager.getWhisperModelDir(ctx).absolutePath
+    val whisperDir = getWhisperModelDir(ctx).absolutePath
     val failures = mutableListOf<String>()
     val skipped = mutableListOf<String>()
     for (c in cases) {
@@ -198,7 +212,7 @@ class BaoTranslateLanguageMatrixE2eTest {
   fun everyLanguageTranslates_targetLanguage_inMetadata() {
     val ctx = InstrumentationRegistry.getInstrumentation().targetContext
     ensure(ctx, listOf("qwen25_1b"))
-    val litertlm = BaoTranslateModelManager.getTranslationModelDir(ctx, "qwen25_1b")
+    val litertlm = getTranslationModelDir(ctx, "qwen25_1b")
       .listFiles { f -> f.extension == "litertlm" }?.firstOrNull()
     assertTrue("qwen25_1b .litertlm missing", litertlm != null)
     val translation = TranslationPipeline(ctx)
@@ -222,7 +236,7 @@ class BaoTranslateLanguageMatrixE2eTest {
   fun everyLanguageTranslates_invalidLanguageCode_surfacesFailure() {
     val ctx = InstrumentationRegistry.getInstrumentation().targetContext
     ensure(ctx, listOf("qwen25_1b"))
-    val litertlm = BaoTranslateModelManager.getTranslationModelDir(ctx, "qwen25_1b")
+    val litertlm = getTranslationModelDir(ctx, "qwen25_1b")
       .listFiles { f -> f.extension == "litertlm" }?.firstOrNull()
     assertTrue("qwen25_1b .litertlm missing", litertlm != null)
     val translation = TranslationPipeline(ctx)
@@ -248,7 +262,7 @@ class BaoTranslateLanguageMatrixE2eTest {
   fun everyLanguageTranslates_emptySource_handledGracefully() {
     val ctx = InstrumentationRegistry.getInstrumentation().targetContext
     ensure(ctx, listOf("qwen25_1b"))
-    val litertlm = BaoTranslateModelManager.getTranslationModelDir(ctx, "qwen25_1b")
+    val litertlm = getTranslationModelDir(ctx, "qwen25_1b")
       .listFiles { f -> f.extension == "litertlm" }?.firstOrNull()
     assertTrue(litertlm != null)
     val translation = TranslationPipeline(ctx)
@@ -272,7 +286,7 @@ class BaoTranslateLanguageMatrixE2eTest {
   fun everyLanguageTranslates_selfTranslation_passthrough() {
     val ctx = InstrumentationRegistry.getInstrumentation().targetContext
     ensure(ctx, listOf("qwen25_1b"))
-    val litertlm = BaoTranslateModelManager.getTranslationModelDir(ctx, "qwen25_1b")
+    val litertlm = getTranslationModelDir(ctx, "qwen25_1b")
       .listFiles { f -> f.extension == "litertlm" }?.firstOrNull()
     assertTrue(litertlm != null)
     val translation = TranslationPipeline(ctx)
@@ -294,7 +308,7 @@ class BaoTranslateLanguageMatrixE2eTest {
   fun everyLanguageTranslates_deterministic() {
     val ctx = InstrumentationRegistry.getInstrumentation().targetContext
     ensure(ctx, listOf("qwen25_1b"))
-    val litertlm = BaoTranslateModelManager.getTranslationModelDir(ctx, "qwen25_1b")
+    val litertlm = getTranslationModelDir(ctx, "qwen25_1b")
       .listFiles { f -> f.extension == "litertlm" }?.firstOrNull()
     assertTrue(litertlm != null)
     val translation = TranslationPipeline(ctx)

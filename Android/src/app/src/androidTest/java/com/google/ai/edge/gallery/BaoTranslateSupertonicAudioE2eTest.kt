@@ -20,6 +20,20 @@ import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.ai.edge.gallery.customtasks.baotranslate.BaoTranslateModelManager
+import com.google.ai.edge.gallery.customtasks.baotranslate.CaptionEngine
+import com.google.ai.edge.gallery.customtasks.baotranslate.captionEngineFor
+import com.google.ai.edge.gallery.customtasks.baotranslate.downloadCaptionModel
+import com.google.ai.edge.gallery.customtasks.baotranslate.getCaptionModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getKokoroModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getOpenVoiceConverterFile
+import com.google.ai.edge.gallery.customtasks.baotranslate.getOpenVoiceRefEncFile
+import com.google.ai.edge.gallery.customtasks.baotranslate.getStreamingAsrModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getSupertonicModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getTranslationModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getVadModelPath
+import com.google.ai.edge.gallery.customtasks.baotranslate.getWhisperModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.isOpenVoiceCloneAvailable
+import com.google.ai.edge.gallery.customtasks.baotranslate.isCaptionModelReady
 import com.google.ai.edge.gallery.customtasks.baotranslate.tts.SupertonicTtsPipeline
 import kotlin.math.abs
 import kotlinx.coroutines.runBlocking
@@ -38,7 +52,7 @@ class BaoTranslateSupertonicAudioE2eTest {
   @Test
   fun supertonicSpeaksRealAudio_forEveryKokoroGapLanguage() {
     val context = InstrumentationRegistry.getInstrumentation().targetContext
-    val modelDir = BaoTranslateModelManager.getSupertonicModelDir(context)
+    val modelDir = getSupertonicModelDir(context)
     // Provision only if not already present (a re-download would re-extract a stale archive).
     if (!SupertonicTtsPipeline.isModelReady(modelDir)) {
       val dl = runBlocking { BaoTranslateModelManager.downloadModel(context, "supertonic_tts") }

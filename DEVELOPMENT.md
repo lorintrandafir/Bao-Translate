@@ -4,9 +4,14 @@ This guide covers the local setup required to build, install, and verify Bao Tra
 
 ## Prerequisites
 
-- JDK 26 at `/Library/Java/JavaVirtualMachines/jdk-26.jdk/Contents/Home`, matching
-  `Android/src/gradle.properties`.
-- Android SDK platform tools on `PATH`.
+- Android Studio (or the Android SDK command-line tools) for platform tools and the SDK.
+- A system JDK 17 or newer on `PATH`. The Gradle toolchain auto-provisions JDK 26 via the bundled [foojay-resolver](https://github.com/foojay-io/tls-toolchain-resolver); system JDK 25 or 26 also satisfies the toolchain target when present.
+- A discoverable JDK 21 for the unit-test suite — see [Build Environment](#build-environment). The JBR bundled with Android Studio satisfies this.
+- Android SDK platform tools on `PATH` so `adb` resolves.
+- A `local.properties` file at `Android/src` that points at your SDK, for example:
+  ```properties
+  sdk.dir=/absolute/path/to/Android/sdk
+  ```
 - An Android 12 / API 31 or newer test device for end-to-end validation.
 - A Hugging Face developer application for model download authentication.
 
@@ -35,12 +40,13 @@ Keep personal client IDs and secrets out of commits.
 ```bash
 cd Android/src
 
-export JAVA_HOME="/Library/Java/JavaVirtualMachines/jdk-26.jdk/Contents/Home"
-export PATH="$HOME/Library/Android/sdk/platform-tools:$PATH"
+# Optional: only needed if `local.properties` does not already point at your SDK or
+# your shell cannot locate `adb`. Gradle's toolchain handles JDK provisioning on its own.
+export ANDROID_HOME=/absolute/path/to/Android/sdk
+export PATH="$ANDROID_HOME/platform-tools:$PATH"
 ```
 
-Gradle toolchain discovery is pinned to JDK 26 in `Android/src/gradle.properties`. If your shell
-resolves another JDK first, Gradle may fail before compilation starts.
+Setting `JAVA_HOME` is not required: the project's toolchain declaration pulls JDK 26 from a system install (Linux, macOS, Windows) or, as a last resort, downloads it via foojay-resolver.
 
 Unit tests *execute* on JDK 21 even though compilation uses JDK 26. Robolectric's bundled ASM
 rejects Java 26 class files ("Unsupported class file major version 70"), so

@@ -29,6 +29,20 @@ import com.google.ai.edge.gallery.customtasks.agentchat.DEFAULT_SYSTEM_PROMPT_SK
 import com.google.ai.edge.gallery.customtasks.agentchat.SkillManagerViewModel
 import com.google.ai.edge.gallery.customtasks.agentchat.injectSkillsAndMcpTools
 import com.google.ai.edge.gallery.customtasks.baotranslate.BaoTranslateModelManager
+import com.google.ai.edge.gallery.customtasks.baotranslate.CaptionEngine
+import com.google.ai.edge.gallery.customtasks.baotranslate.captionEngineFor
+import com.google.ai.edge.gallery.customtasks.baotranslate.downloadCaptionModel
+import com.google.ai.edge.gallery.customtasks.baotranslate.getCaptionModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getKokoroModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getOpenVoiceConverterFile
+import com.google.ai.edge.gallery.customtasks.baotranslate.getOpenVoiceRefEncFile
+import com.google.ai.edge.gallery.customtasks.baotranslate.getStreamingAsrModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getSupertonicModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getTranslationModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getVadModelPath
+import com.google.ai.edge.gallery.customtasks.baotranslate.getWhisperModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.isOpenVoiceCloneAvailable
+import com.google.ai.edge.gallery.customtasks.baotranslate.isCaptionModelReady
 import com.google.ai.edge.gallery.customtasks.baotranslate.ModelStatus
 import com.google.ai.edge.gallery.data.BuiltInTaskId
 import com.google.ai.edge.gallery.data.DefaultDataStoreRepository
@@ -70,7 +84,7 @@ class BaoTranslateAgentSkillCallE2eTest {
     val context = InstrumentationRegistry.getInstrumentation().targetContext
     val gemma =
       File(
-        BaoTranslateModelManager.getTranslationModelDir(context, "gemma4_e2b"),
+        getTranslationModelDir(context, "gemma4_e2b"),
         "gemma-4-E2B-it.litertlm",
       )
     if (BaoTranslateModelManager.checkModelStatus(context, "gemma4_e2b") != ModelStatus.Ready) {

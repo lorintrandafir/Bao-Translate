@@ -47,14 +47,14 @@ Bluetooth behavior, model provisioning, OpenVoice, or Nearby Connections.
 
 ```bash
 cd Android/src
-export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-export PATH="$HOME/Library/Android/sdk/platform-tools:$PATH"
 
 ./gradlew :app:assembleDebug
 ./gradlew :app:testDebugUnitTest
 ./gradlew :app:connectedDebugAndroidTest
 ./gradlew :app:smokeE2e
 ```
+
+The Gradle toolchain auto-provisions JDK 26 via foojay-resolver; setting `JAVA_HOME` is no longer required for a normal build. Point Gradle at your local SDK with `Android/src/local.properties` (e.g. `sdk.dir=/absolute/path/to/Android/sdk`) and ensure the SDK platform tools are on `PATH` for `adb install`.
 
 Use `assembleDebug` as the fast compile gate. Use unit tests for JVM behavior. Use connected Android tests
 for microphone, Bluetooth, model inference, screenshots, and Nearby flows.

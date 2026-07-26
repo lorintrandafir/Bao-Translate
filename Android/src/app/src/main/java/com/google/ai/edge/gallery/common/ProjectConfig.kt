@@ -22,9 +22,26 @@ import net.openid.appauth.AuthorizationServiceConfiguration
 
 /** Central project configuration sourced from Gradle BuildConfig fields and runtime properties. */
 object ProjectConfig {
+  /**
+   * Custom URI scheme used for the app's own internal deep links. Must match `applicationId`.
+   * The OAuth redirect scheme is configurable separately as [redirectScheme].
+   */
+  const val deepLinkScheme = "com.google.ai.edge.gallery"
+
+  const val deepLinkModelPath = "$deepLinkScheme://model/"
+
+  const val deepLinkGlobalModelManager = "$deepLinkScheme://global_model_manager"
+
+  // Hugging Face OAuth credentials — injected via BuildConfig from the `huggingFace*` gradle
+  // properties or HUGGING_FACE_* environment variables, so they never live as literals in
+  // source. All default to blank; [isHuggingFaceOAuthConfigured] gates the sign-in flow off
+  // instead of failing at runtime. See DEVELOPMENT.md for HF OAuth app registration steps.
   val clientId: String = BuildConfig.HUGGING_FACE_CLIENT_ID
 
   val redirectUri: String = BuildConfig.HUGGING_FACE_REDIRECT_URI
+
+  /** Scheme registered as `appAuthRedirectScheme` in build.gradle.kts; AppAuth intercepts it. */
+  val redirectScheme: String = BuildConfig.HUGGING_FACE_REDIRECT_SCHEME
 
   private val authEndpoint: String = BuildConfig.HUGGING_FACE_AUTH_ENDPOINT
 

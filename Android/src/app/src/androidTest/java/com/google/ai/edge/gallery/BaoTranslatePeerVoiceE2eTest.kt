@@ -28,6 +28,20 @@ import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import com.google.ai.edge.gallery.customtasks.baotranslate.BaoTranslateModelManager
+import com.google.ai.edge.gallery.customtasks.baotranslate.CaptionEngine
+import com.google.ai.edge.gallery.customtasks.baotranslate.captionEngineFor
+import com.google.ai.edge.gallery.customtasks.baotranslate.downloadCaptionModel
+import com.google.ai.edge.gallery.customtasks.baotranslate.getCaptionModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getKokoroModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getOpenVoiceConverterFile
+import com.google.ai.edge.gallery.customtasks.baotranslate.getOpenVoiceRefEncFile
+import com.google.ai.edge.gallery.customtasks.baotranslate.getStreamingAsrModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getSupertonicModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getTranslationModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getVadModelPath
+import com.google.ai.edge.gallery.customtasks.baotranslate.getWhisperModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.isOpenVoiceCloneAvailable
+import com.google.ai.edge.gallery.customtasks.baotranslate.isCaptionModelReady
 import com.google.ai.edge.gallery.customtasks.baotranslate.BaoTranslateViewModel
 import com.google.ai.edge.gallery.customtasks.baotranslate.PipelineStatus
 import com.google.ai.edge.gallery.customtasks.baotranslate.RecordingController
@@ -198,8 +212,8 @@ class BaoTranslatePeerVoiceE2eTest {
       assertTrue(
         "OpenVoice converter init",
         converter.initialize(
-          BaoTranslateModelManager.getOpenVoiceConverterFile(context),
-          BaoTranslateModelManager.getOpenVoiceRefEncFile(context),
+          getOpenVoiceConverterFile(context),
+          getOpenVoiceRefEncFile(context),
         ),
       )
       val localSe = embeddingFromAsset(converter, "bao_voice_ref.wav")
@@ -253,8 +267,8 @@ class BaoTranslatePeerVoiceE2eTest {
       assertTrue(
         "OpenVoice converter init",
         converter.initialize(
-          BaoTranslateModelManager.getOpenVoiceConverterFile(context),
-          BaoTranslateModelManager.getOpenVoiceRefEncFile(context),
+          getOpenVoiceConverterFile(context),
+          getOpenVoiceRefEncFile(context),
         ),
       )
       val localSe = embeddingFromAsset(converter, "bao_voice_ref.wav")

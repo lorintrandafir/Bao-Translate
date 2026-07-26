@@ -23,6 +23,20 @@ import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.ai.edge.gallery.customtasks.baotranslate.BaoTranslateModelManager
+import com.google.ai.edge.gallery.customtasks.baotranslate.CaptionEngine
+import com.google.ai.edge.gallery.customtasks.baotranslate.captionEngineFor
+import com.google.ai.edge.gallery.customtasks.baotranslate.downloadCaptionModel
+import com.google.ai.edge.gallery.customtasks.baotranslate.getCaptionModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getKokoroModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getOpenVoiceConverterFile
+import com.google.ai.edge.gallery.customtasks.baotranslate.getOpenVoiceRefEncFile
+import com.google.ai.edge.gallery.customtasks.baotranslate.getStreamingAsrModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getSupertonicModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getTranslationModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getVadModelPath
+import com.google.ai.edge.gallery.customtasks.baotranslate.getWhisperModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.isOpenVoiceCloneAvailable
+import com.google.ai.edge.gallery.customtasks.baotranslate.isCaptionModelReady
 import com.google.ai.edge.gallery.customtasks.baotranslate.ModelStatus
 import com.google.ai.edge.gallery.customtasks.baotranslate.audio.WavUtils
 import com.google.ai.edge.gallery.customtasks.baotranslate.stt.WhisperPipeline
@@ -69,15 +83,15 @@ class BaoTranslateSpokenTranslationE2eTest {
     try {
       assertTrue(
         "Whisper init failed",
-        whisper.initialize(BaoTranslateModelManager.getWhisperModelDir(context).absolutePath),
+        whisper.initialize(getWhisperModelDir(context).absolutePath),
       )
-      val litertlm = BaoTranslateModelManager.getTranslationModelDir(context, "qwen25_1b")
+      val litertlm = getTranslationModelDir(context, "qwen25_1b")
         .listFiles { f -> f.extension == "litertlm" }?.firstOrNull()
       assertNotNull("No .litertlm translation model present", litertlm)
       assertTrue("Translation init failed", translation.initialize(litertlm!!.absolutePath))
       assertTrue(
         "Kokoro init failed",
-        kokoro.initialize(BaoTranslateModelManager.getKokoroModelDir(context).absolutePath),
+        kokoro.initialize(getKokoroModelDir(context).absolutePath),
       )
 
       // 1. English speech in. A richer sentence gives the round-trip ASR more to work with.
@@ -199,11 +213,11 @@ class BaoTranslateSpokenTranslationE2eTest {
     val translation = TranslationPipeline(context)
     val kokoro = KokoroTtsPipeline(context)
     try {
-      assertTrue(whisper.initialize(BaoTranslateModelManager.getWhisperModelDir(context).absolutePath))
-      val litertlm = BaoTranslateModelManager.getTranslationModelDir(context, "qwen25_1b")
+      assertTrue(whisper.initialize(getWhisperModelDir(context).absolutePath))
+      val litertlm = getTranslationModelDir(context, "qwen25_1b")
         .listFiles { f -> f.extension == "litertlm" }?.firstOrNull()!!
       assertTrue(translation.initialize(litertlm.absolutePath))
-      assertTrue(kokoro.initialize(BaoTranslateModelManager.getKokoroModelDir(context).absolutePath))
+      assertTrue(kokoro.initialize(getKokoroModelDir(context).absolutePath))
 
       val enShorts = synthesizeEnglish16k(context, "Good morning.")
       val stt = whisper.transcribeBlocking(enShorts).getOrNull()!!
@@ -236,11 +250,11 @@ class BaoTranslateSpokenTranslationE2eTest {
     val translation = TranslationPipeline(context)
     val kokoro = KokoroTtsPipeline(context)
     try {
-      assertTrue(whisper.initialize(BaoTranslateModelManager.getWhisperModelDir(context).absolutePath))
-      val litertlm = BaoTranslateModelManager.getTranslationModelDir(context, "qwen25_1b")
+      assertTrue(whisper.initialize(getWhisperModelDir(context).absolutePath))
+      val litertlm = getTranslationModelDir(context, "qwen25_1b")
         .listFiles { f -> f.extension == "litertlm" }?.firstOrNull()!!
       assertTrue(translation.initialize(litertlm.absolutePath))
-      assertTrue(kokoro.initialize(BaoTranslateModelManager.getKokoroModelDir(context).absolutePath))
+      assertTrue(kokoro.initialize(getKokoroModelDir(context).absolutePath))
 
       val enShorts = synthesizeEnglish16k(context, "Good morning, how are you?")
       val stt = whisper.transcribeBlocking(enShorts).getOrNull()!!
@@ -288,7 +302,7 @@ class BaoTranslateSpokenTranslationE2eTest {
     val context = InstrumentationRegistry.getInstrumentation().targetContext
     ensureReady(context, listOf("kokoro_tts"))
     val kokoro = KokoroTtsPipeline(context)
-    assertTrue("kokoro init", kokoro.initialize(BaoTranslateModelManager.getKokoroModelDir(context).absolutePath))
+    assertTrue("kokoro init", kokoro.initialize(getKokoroModelDir(context).absolutePath))
     kokoro.cleanup()
     kokoro.cleanup()  // idempotent
   }
@@ -300,7 +314,7 @@ class BaoTranslateSpokenTranslationE2eTest {
     ensureReady(context, listOf("kokoro_tts"))
     val kokoro = KokoroTtsPipeline(context)
     try {
-      assertTrue("kokoro init", kokoro.initialize(BaoTranslateModelManager.getKokoroModelDir(context).absolutePath))
+      assertTrue("kokoro init", kokoro.initialize(getKokoroModelDir(context).absolutePath))
       val audio = kokoro.synthesizeAudio("", KokoroTtsPipeline.getVoiceForLanguage("es"))
       // Pin: empty text returns null OR produces silence, not garbage audio with content.
       if (audio != null) {

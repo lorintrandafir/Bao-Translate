@@ -20,6 +20,21 @@ import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.ai.edge.gallery.customtasks.baotranslate.BaoTranslateModelManager
+import com.google.ai.edge.gallery.customtasks.baotranslate.CaptionEngine
+import com.google.ai.edge.gallery.customtasks.baotranslate.captionEngineFor
+import com.google.ai.edge.gallery.customtasks.baotranslate.downloadCaptionModel
+import com.google.ai.edge.gallery.customtasks.baotranslate.getCaptionModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getKokoroModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getOpenVoiceConverterFile
+import com.google.ai.edge.gallery.customtasks.baotranslate.getOpenVoiceRefEncFile
+import com.google.ai.edge.gallery.customtasks.baotranslate.getStreamingAsrModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getSupertonicModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getTranslationModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.getVadModelPath
+import com.google.ai.edge.gallery.customtasks.baotranslate.getWhisperModelDir
+import com.google.ai.edge.gallery.customtasks.baotranslate.isOpenVoiceCloneAvailable
+import com.google.ai.edge.gallery.customtasks.baotranslate.isCaptionModelReady
+import com.google.ai.edge.gallery.customtasks.baotranslate.deleteCaptionModel
 import com.google.ai.edge.gallery.customtasks.baotranslate.stt.VoskStreamingPipeline
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
@@ -39,19 +54,19 @@ class BaoTranslateVoskCaptionE2eTest {
     val context = InstrumentationRegistry.getInstrumentation().targetContext
 
     // Force a real provisioning run (download from the registry URL + zip-extract, app-owned).
-    BaoTranslateModelManager.deleteCaptionModel(context, "es")
+    deleteCaptionModel(context, "es")
     assertTrue(
       "Spanish caption model should be absent after delete",
-      !BaoTranslateModelManager.isCaptionModelReady(context, "es"),
+      !isCaptionModelReady(context, "es"),
     )
     val result = runBlocking { BaoTranslateModelManager.downloadCaptionModel(context, "es") }
     assertTrue("Spanish Vosk model provisioning failed: ${result.exceptionOrNull()?.message}", result.isSuccess)
     assertTrue(
       "Spanish caption model not Ready after provisioning",
-      BaoTranslateModelManager.isCaptionModelReady(context, "es"),
+      isCaptionModelReady(context, "es"),
     )
 
-    val dir = requireNotNull(BaoTranslateModelManager.getCaptionModelDir(context, "es"))
+    val dir = requireNotNull(getCaptionModelDir(context, "es"))
     val pipeline = VoskStreamingPipeline(dir.absolutePath)
     assertTrue("Provisioned Vosk Spanish model failed to load", pipeline.initialize())
 

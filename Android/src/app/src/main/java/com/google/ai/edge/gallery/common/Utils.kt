@@ -71,7 +71,7 @@ fun processLlmResponse(response: String): String {
 inline fun <reified T> getJsonResponse(url: String): JsonObjAndTextContent<T>? {
   runCatching {
 
-    val connection = URL(url).openConnection() as HttpURLConnection
+    val connection = com.google.ai.edge.gallery.common.network.HttpClient.openConnection(URL(url))
     connection.requestMethod = "GET"
     connection.connect()
 

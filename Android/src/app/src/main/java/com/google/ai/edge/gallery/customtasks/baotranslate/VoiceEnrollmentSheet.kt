@@ -82,7 +82,6 @@ enum class EnrollmentState {
 
 private const val MIN_RECORDING_MS = 3000L
 private const val MAX_RECORDING_MS = 10000L
-private const val SAMPLE_RATE = PipelineConfig.STT_SAMPLE_RATE
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -185,8 +184,8 @@ fun VoiceEnrollmentSheet(
     scope.launch {
       delay(50)
       val samples = audioSamplesRef.value
-      if (samples != null && samples.size >= SAMPLE_RATE * (MIN_RECORDING_MS / 1000f)) {
-        onEnrollComplete(samples, SAMPLE_RATE, profileName.trim().takeIf { it.isNotBlank() })
+      if (samples != null && samples.size >= ENROLLMENT_SAMPLE_RATE * (MIN_RECORDING_MS / 1000f)) {
+        onEnrollComplete(samples, ENROLLMENT_SAMPLE_RATE, profileName.trim().takeIf { it.isNotBlank() })
         onEnrollmentStateChange(EnrollmentState.SUCCESS)
       } else {
         localErrorMessage = recordingShort
@@ -468,92 +467,3 @@ fun VoiceEnrollmentSheet(
   }
 }
 
-private fun startRecording(
-  context: android.content.Context,
-  scope: kotlinx.coroutines.CoroutineScope,
-  onAmplitudeUpdate: (Float) -> Unit,
-  onDurationUpdate: (Long) -> Unit,
-  onSamplesReady: (ShortArray) -> Unit,
-  onRecordingStarted: (AudioRecord) -> Unit,
-  onJobStarted: (Job) -> Unit,
-  onRecordingFailed: () -> Unit,
-) {
-  val minBufferSize = AudioRecord.getMinBufferSize(
-    SAMPLE_RATE,
-    AudioFormat.CHANNEL_IN_MONO,
-    AudioFormat.ENCODING_PCM_16BIT,
-  )
-  if (minBufferSize <= 0) {
-    onRecordingFailed()
-    return
-  }
-
-  if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) !=
-    PackageManager.PERMISSION_GRANTED
-  ) {
-    onRecordingFailed()
-    return
-  }
-
-  // Oversize the capture buffer (0.5 s of PCM16, never below 4x the OS minimum) so stalls in the
-  // enrollment read loop never overrun AudioRecord and drop frames — corrupt enrollment audio
-  // permanently degrades the cloned-voice embedding. Mirrors RecordingController's capture sizing.
-  val captureBufferBytes = maxOf(minBufferSize * 4, SAMPLE_RATE * Short.SIZE_BYTES / 2)
-  val recorder = AudioRecord(
-    MediaRecorder.AudioSource.MIC,
-    SAMPLE_RATE,
-    AudioFormat.CHANNEL_IN_MONO,
-    AudioFormat.ENCODING_PCM_16BIT,
-    captureBufferBytes,
-  )
-
-  if (recorder.state != AudioRecord.STATE_INITIALIZED) {
-    recorder.release()
-    onRecordingFailed()
-    return
-  }
-
-  val buffer = ShortArray((minBufferSize / 2).coerceAtLeast(SAMPLE_RATE / 10))
-  val maxSamples = SAMPLE_RATE * 30
-  val allSamples = ShortArray(maxSamples)
-  var sampleCount = 0
-
-  recorder.startRecording()
-
-  if (recorder.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
-    recorder.release()
-    onRecordingFailed()
-    return
-  }
-
-  onRecordingStarted(recorder)
-
-  val job = scope.launch(Dispatchers.IO) {
-    while (isActive) {
-      val readCount = recorder.read(buffer, 0, buffer.size)
-      if (readCount > 0) {
-        val copyCount = minOf(readCount, maxSamples - sampleCount)
-        if (copyCount > 0) {
-          System.arraycopy(buffer, 0, allSamples, sampleCount, copyCount)
-          sampleCount += copyCount
-        }
-
-        val amplitude = waveformAmplitude(buffer, readCount)
-
-        withContext(Dispatchers.Main) {
-          onAmplitudeUpdate(amplitude)
-          onDurationUpdate((sampleCount * 1000L) / SAMPLE_RATE)
-          onSamplesReady(allSamples.copyOf(sampleCount))
-        }
-      } else if (readCount == AudioRecord.ERROR_INVALID_OPERATION || readCount == AudioRecord.ERROR_BAD_VALUE) {
-        break
-      }
-    }
-
-    withContext(Dispatchers.Main) {
-      onSamplesReady(allSamples.copyOf(sampleCount))
-    }
-  }
-
-  onJobStarted(job)
-}
