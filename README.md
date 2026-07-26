@@ -12,8 +12,9 @@
   <img alt="Version: 1.0.15" src="https://img.shields.io/badge/version-1.0.15-orange.svg" />
   <img alt="Languages: 12 targets" src="https://img.shields.io/badge/languages-12%20targets-success.svg" />
   <img alt="Runtime: LiteRT-LM, sherpa-onnx, ONNX Runtime" src="https://img.shields.io/badge/runtime-LiteRT--LM%20%7C%20sherpa--onnx%20%7C%20ONNX-4285F4.svg" />
-  <img alt="Unit tests: 560 passing" src="https://img.shields.io/badge/unit%20tests-560%20passing-success.svg" />
-  <img alt="Android Lint: clean" src="https://img.shields.io/badge/android%20lint-0%20errors-success.svg" />
+  <img alt="Unit tests: 563 passing" src="https://img.shields.io/badge/unit%20tests-563%20passing-success.svg" />
+  <img alt="Strict gate: 563 of 563" src="https://img.shields.io/badge/strict%20gate-563%2F563-success.svg" />
+  <img alt="Android Lint: 0 errors" src="https://img.shields.io/badge/android%20lint-0%20errors-success.svg" />
   <img alt="P2P: LibreDrop Quick Share" src="https://img.shields.io/badge/p2p-LibreDrop%20Quick%20Share-blueviolet.svg" />
 </p>
 
@@ -133,6 +134,33 @@ sequenceDiagram
 
 Peer-supplied filenames are sanitized before they reach MediaStore or a `File` — separators, control characters, NUL, leading dots and `..` segments are all neutralised. Full detail, including known gaps, is in [docs/LIBREDROP.md](docs/LIBREDROP.md).
 
+## Privacy And Trust Boundaries
+
+Everything after provisioning runs locally: speech, transcript, translation, synthesis and voice conversion never leave the device, and LibreDrop transfers go peer-to-peer without a relay server. The boundaries that data does cross are handled explicitly.
+
+```mermaid
+flowchart LR
+  subgraph onDevice["Stays on device"]
+    audio["Microphone audio, transcripts, voice profiles"]
+    store["App storage - models, skills, downloads"]
+  end
+  logcat["logcat"]
+  peer["Paired or nearby device"]
+  web["Skill WebView content"]
+  audio -->|"release builds drop v and d"| logcat
+  audio -->|"Nearby relay, conversation modes only"| peer
+  peer -->|"LibreDrop - consent required, filenames sanitized"| store
+  web -->|"origin checked, storage quotas enforced"| store
+```
+
+| Boundary | Control | Proven by |
+| --- | --- | --- |
+| Diagnostic logging | `BaoLog.shouldEmit` drops `v` and `d` in release builds — those are the levels where call sites interpolated typed input and model responses. `i`/`w`/`e` survive for field bug reports and are expected to carry shapes, not content. Release does not minify, so nothing else would have stripped them. | `BaoLogTest` |
+| Inbound files | Every peer-supplied name goes through `FilenameSanitizer` before MediaStore or a `File`; a transfer only starts after an explicit Accept in `LibreDropConsentActivity` or its notification fallback. Receiving is opt-in and off on a fresh install. | `FilenameSanitizerTest`, `ConsentIntentsTest`, `LibreDropConsentActivityTest`, `ReceiveModePreferencesTest` |
+| Skill WebView | `isTrustedLocalWebViewUrl` compares full origin (scheme, host, port) rather than prefix, so userinfo spoofing and look-alike hosts are rejected; the WebView runs JavaScript, so this is the gate. | `WebViewTrustAndFileNameTest` |
+| Skill storage bridge | `SkillStorageBridge` caps what page JavaScript can persist before it reaches `SharedPreferences`: keys ≤ 256 chars, values ≤ 64 KiB, 512 entries total, with a rejected write returning `false` rather than throwing. | `SkillStorageBridgeTest` |
+| Imported model names | `ensureValidFileName` replaces path separators and everything outside `[A-Za-z0-9._-]`. Its one documented gap — leading dots are not stripped — is pinned by a test rather than left implicit. | `WebViewTrustAndFileNameTest` |
+
 ## Supported Languages
 
 English, Spanish, French, German, Chinese, Japanese, Korean, Portuguese, Italian, Russian, Arabic, and Hindi.
@@ -242,6 +270,7 @@ flowchart TB
 | [mcp/](mcp/) | Model Context Protocol integration guide |
 | [skills/](skills/) | Agent skill documentation and examples |
 | [model_allowlists/](model_allowlists/) and [model_allowlist.json](model_allowlist.json) | Curated model allowlists |
+| [PLAN.md](PLAN.md) | Engineering plan: verified work, remaining follow-ups, reproduction commands |
 | [Function_Calling_Guide.md](Function_Calling_Guide.md) | Guide for adding custom mobile actions |
 | [Bug_Reporting_Guide.md](Bug_Reporting_Guide.md) | Android bug report capture guide |
 
@@ -249,6 +278,7 @@ flowchart TB
 
 - [Android app guide](Android/README.md)
 - [LibreDrop protocol and status](docs/LIBREDROP.md)
+- [Engineering plan and status](PLAN.md)
 - [Development setup](DEVELOPMENT.md)
 - [Contribution policy](CONTRIBUTING.md)
 - [Bug reporting](Bug_Reporting_Guide.md)
@@ -263,10 +293,11 @@ Current state of the JVM unit suite:
 
 | Metric | Value |
 | --- | --- |
-| Unit tests | 560 passing, 0 failing, 0 skipped, 46 classes |
-| Strict gate (`@Category(Strict)`) | 560 of 560 — the whole suite is gating |
+| Unit tests | 563 passing, 0 failing, 0 skipped, 46 classes |
+| Strict gate (`@Category(Strict)`) | 563 of 563 — every class carries the marker, so the whole suite is gating |
 | LibreDrop tests | 154 |
-| Android Lint (debug) | 0 errors |
+| Instrumentation tests | 105 `@Test` methods, device or emulator required |
+| Android Lint (debug) | 0 errors, 26 warnings |
 
 The single gate that runs everything:
 
@@ -275,10 +306,24 @@ cd Android/src
 ./gradlew :app:verifyReleaseReady
 ```
 
-`verifyReleaseReady` covers `compileDebugKotlin`, `compileDebugAndroidTestKotlin`,
-`testDebugUnitTest`, `testDebugUnitTestStrict`, `lintDebug`, `assembleDebug`, and
-`assembleDebugAndroidTest`. The task definitions live in
-[gradle/verification.gradle.kts](Android/src/gradle/verification.gradle.kts).
+```mermaid
+flowchart LR
+  gate["verifyReleaseReady"] --> compile["compileDebugKotlin"]
+  gate --> compileAt["compileDebugAndroidTestKotlin"]
+  gate --> unit["testDebugUnitTest - 563"]
+  gate --> strict["testDebugUnitTestStrict - 563"]
+  gate --> lint["lintDebug"]
+  gate --> apk["assembleDebug"]
+  gate --> apkAt["assembleDebugAndroidTest"]
+  device["Device gates - not in verifyReleaseReady"] --> smoke["smokeE2e"]
+  device --> connected["connectedDebugAndroidTest - 105"]
+```
+
+The strict task reuses the exact compiled classes and runtime classpath of `testDebugUnitTest` and
+filters them through JUnit 4 categories, so it runs the same bytecode rather than a parallel build.
+The task definitions live in
+[gradle/verification.gradle.kts](Android/src/gradle/verification.gradle.kts), outside the module
+directory for the Lint reason noted in the build notes above.
 
 Device gates, which need hardware or an emulator:
 
@@ -290,21 +335,31 @@ Device gates, which need hardware or an emulator:
 ### Known false-green surfaces in the instrumentation suite
 
 The 105 `@Test` methods under `androidTest` are **not** as strict as the JVM suite. An audit of the
-real source found four places where a green run does not mean the behaviour was proven:
+real source found five places where a green run does not mean the behaviour was proven:
 
 | Test | Why a pass can be empty |
 | --- | --- |
 | `BaoTranslateLiveMicTranslationE2eTest.twoDevice_sendsTranscriptToLivePeerOverNearby` | `assumeTrue(peer != null)` — with one device attached the "two-device proof" reports success having proven nothing. |
-| `BaoTranslateLiveMicTranslationE2eTest.receivedPeerMessageWithoutEmbeddingDoesNotUseLocalVoice` | Same assumption; skips silently without a peer. |
+| `BaoTranslateLiveMicTranslationE2eTest.receivedPeerMessageUsesPeerTimbreWhenEmbeddingPresent` | Routed through `ensureOpenVoiceReady`, which `assumeTrue`s that the OpenVoice ONNX files are provisioned. On a device without them the timbre assertions never execute. |
+| `BaoTranslateLiveMicTranslationE2eTest.receivedPeerMessageWithoutEmbeddingDoesNotUseLocalVoice` | Same `ensureOpenVoiceReady` skip. |
 | `BaoTranslateBluetoothAudioRoutingTest.audioRouter_cleanup_idempotent` | No assertion — passes if `cleanup()` became a no-op. |
 | `BaoTranslateDeviceAudioRouteTest.audioRouter_play_thenReset_isSafe` | No assertion — same. |
 
 Read a green `connectedDebugAndroidTest` accordingly: the two-device Nearby path is only actually
-exercised when a second device is present and in Conversation Mode. The JVM suite has no equivalent
-gap — all 560 of its methods assert, none are `@Ignore`d, and its four `assume*` calls are
-filesystem-capability guards that did not fire on this machine (`skipped=0` in every run).
+exercised when a second device is present and in Conversation Mode, and the voice-conversion path
+only when the OpenVoice models are already on the device.
 
-Two hardening rules the suite enforces on itself, not just on production code:
+The JVM suite is stricter but not perfect. None of its 563 methods are `@Ignore`d and `skipped=0` in
+every run; its three `assume*` calls all sit in `ModelIntegrityTest` (two symlink-capability guards
+and one POSIX-only guard) and none of them fired on this machine. Five methods are crash-only
+contracts that assert nothing and fail only if the code under test throws —
+`VadProcessorTest.reset_idempotent`, `cleanup_calledTwice_safe`, `concurrentCalls_serializedAndSafe`
+(deliberately, since thread interleaving is not deterministic),
+`VoiceProfileManagerTest.deleteProfile_idempotent_forMissingProfile`, and
+`StrictHarnessTest.whitespaceTorture_doesNotPanic_onAnyEntry`. Everything else asserts, including the
+kotest `forAll` property tests, which fail on falsification.
+
+Three hardening rules the suite enforces on itself, not just on production code:
 
 - `CrossCuttingHardeningTest.runBlockingWithTimeout_isRequired` statically scans the test tree and
   fails if any `runBlocking` is not paired with a `withTimeout`, so a hung coroutine cannot masquerade
@@ -313,17 +368,29 @@ Two hardening rules the suite enforces on itself, not just on production code:
   `adb shell am instrument` returns 0 even when tests fail or the process crashes.
 - `DeadSurfaceGuardTest` re-derives the set of production types with no caller in any source set and
   fails on anything newly unreferenced. The compiler happily builds code nobody calls and Lint's
-  unused-symbol checks do not span source sets, which is how ~2.9k lines of shipped-but-unwired
-  Kotlin accumulated unnoticed. Known-dead entries are listed with a reason; the list is a ratchet.
+  unused-symbol checks do not span source sets, which is how 2,941 lines of shipped-but-unwired
+  Kotlin accumulated unnoticed. Its 17 known-dead entries are listed with a reason each — mostly the
+  non-Wi-Fi-LAN bootstrap clients the sender never negotiates, plus the QR-pairing and "AI
+  assistance" surfaces with no UI entry point. The list is a ratchet: shrinking it is progress,
+  growing it has to be deliberate.
 
 ### Thinnest coverage
 
-Measured main-LOC vs test-LOC per package, the largest remaining gaps are **not** in LibreDrop —
-that went from the worst-covered area to among the best. They are `ui/common` (~15k LOC) and
-`customtasks/agentchat` (~8.2k LOC). The first tests in `ui/common` now exist
-(`WebViewTrustAndFileNameTest` for WebView origin trust and imported-model file naming,
-`SkillStorageBridgeTest` for the JavaScript storage bridge's quotas);
-the rest of both packages is where the next coverage work belongs.
+Measured Kotlin LOC per package, `main` against its own unit tests:
+
+| Package | main | unit test |
+| --- | --- | --- |
+| `customtasks/libredrop` | 45,105 | 2,611 |
+| `ui/common` | 15,089 | 363 |
+| `customtasks/baotranslate` | 13,774 | 3,792 |
+| `customtasks/agentchat` | 8,233 | 0 |
+| `ui/modelmanager` | 3,255 | 0 |
+
+The largest remaining gaps are **not** in LibreDrop — that went from the worst-covered area to among
+the best. `customtasks/agentchat` is the biggest package with no unit tests at all, and `ui/common`
+has only the first two (`WebViewTrustAndFileNameTest` for WebView origin trust and imported-model
+file naming, `SkillStorageBridgeTest` for the JavaScript storage bridge's quotas) against 15k lines.
+Those two packages are where the next coverage work belongs.
 
 ### What is not covered
 
@@ -332,8 +399,10 @@ BLE discovery, the Wi-Fi Direct / hotspot medium providers, or the notification 
 need instrumentation on a device, or a service refactor small enough to sit behind a Robolectric
 harness.
 
-Robolectric itself is available (`ReceiveModePreferencesTest` uses it against a real
-`SharedPreferences`), with two toolchain caveats recorded in the build: its bundled ASM cannot read
+Robolectric itself is available and now carries four classes — `ReceiveModePreferencesTest` against a
+real `SharedPreferences`, `LibreDropConsentActivityTest` against the consent trampoline's defensive
+paths, `WebViewTrustAndFileNameTest` against Android's own `Uri` parser, and `SkillStorageBridgeTest`
+against the storage bridge — with two toolchain caveats recorded in the build: its bundled ASM cannot read
 Java 26 class files, so `tasks.withType<Test>` pins a JDK 21 launcher; and it ships emulated
 frameworks only up to SDK 36, so Robolectric tests carry `@Config(sdk = [36])`. The pin is
 4.16.1 (latest stable); 4.17-beta-2 accepts SDK 37 but fails on both JDK 21 and 26, so neither
