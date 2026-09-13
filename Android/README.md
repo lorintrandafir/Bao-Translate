@@ -1,4 +1,4 @@
-# Bao Translate Android App
+# Bao Translate Android App - Build test
 
 The Android client for **Bao Translate**: a fully on-device, real-time speech translator with live
 streaming captions that can speak translations in your own cloned voice and relay a live
