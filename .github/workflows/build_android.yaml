@@ -25,5 +25,13 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
-      - name: Build
-        run: ./gradlew assembleRelease
+      
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bao-Translate-APK
+          path: Android/src/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
