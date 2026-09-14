@@ -35,6 +35,9 @@ jobs:
             -o app/libs/sherpa-onnx-v1.13.2.aar \
             https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.2/sherpa-onnx-1.13.2.aar
       - name: Build Debug APK
+        env:
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
         run: ./gradlew assembleDebug
 
       - name: Upload APK
