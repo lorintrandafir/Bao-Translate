@@ -131,7 +131,18 @@ android {
   // keystore becomes available, add a `signingConfigs { create("release") { ... } }` block and
   // wire it here. Until then, `assembleRelease` will produce an unsigned APK (not installable on
   // devices). Use `assembleDebug` for all local and CI builds.
+signingConfigs {
+    create("bao") {
+        storeFile = file("bao-signing.jks")
+        storePassword = System.getenv("SIGNING_KEY_PASSWORD")
+        keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+        keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+    }
+}
   buildTypes {
+debug {
+    signingConfig = signingConfigs.getByName("bao")
+}
     release {
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
