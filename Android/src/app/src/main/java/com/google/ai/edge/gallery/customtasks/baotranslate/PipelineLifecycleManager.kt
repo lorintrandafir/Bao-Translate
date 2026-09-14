@@ -95,7 +95,7 @@ internal class PipelineLifecycleManager(
     }
 
     val kokoroDir = getKokoroModelDir(app)
-    if (kokoroDir.exists()) {
+    if (false && kokoroDir.exists()) {
       val kokoro = KokoroTtsPipeline(app)
       if (kokoro.initialize(kokoroDir.absolutePath)) {
         kokoroTts = kokoro
@@ -221,14 +221,13 @@ internal class PipelineLifecycleManager(
 
   fun requiredPipelinesReady(): Boolean =
     whisperPipeline != null &&
-      translationPipeline != null &&
-      kokoroTts != null &&
-      vadProcessor != null
+    translationPipeline != null &&
+    vadProcessor != null
 
   fun missingPipelineComponents(app: Application): List<String> = buildList {
     if (whisperPipeline == null) add(app.getString(R.string.bao_component_whisper_stt))
     if (translationPipeline == null) add(app.getString(R.string.bao_component_translation))
-    if (kokoroTts == null) add(app.getString(R.string.bao_component_kokoro_tts))
+    // if (kokoroTts == null) add(app.getString(R.string.bao_component_kokoro_tts))
     if (vadProcessor == null) add(app.getString(R.string.bao_component_silero_vad))
   }
 }
